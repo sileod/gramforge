@@ -19,43 +19,25 @@ def arith_grammar():
 
     return g
 
-def dyck_grammar(include_unicode=True, allow_atoms=True):
-
-    parenthesis_pairs = [
-        ("(", ")"),   
-        ("[", "]"),   
-        ("<", ">"),   
-        ("⟨", "⟩"),   
-        ("⟦", "⟧"),   
-        ("⟪", "⟫"), 
-    ]
+def dyck_grammar(include_unicode=True):
+    """
+    Dyck grammar where each bracket is a separate token.
+    Useful for continuation tasks where we need to predict individual brackets.
+    """
+    pairs = [("(", ")"), ("[", "]"), ("<", ">")]
+    if include_unicode:
+        pairs += [("⟨", "⟩"), ("⟦", "⟧"), ("⟪", "⟫")]
     
     D = init_grammar(['dyck'], name="dyck", preprocess_template=lambda x: x)
     
     D('start(seq)', '{0}')
+    D('seq', '', weight=3)                       # empty (base case)
+    D('seq(expr, seq)', '{0} {1}', weight=2)     # expr followed by more
     
-    D('seq', '', weight=4)                      # empty (base case)
-    D('seq(expr)', '{0}', weight=5)             # single expression
-    D('seq(expr, seq)', '{0}{1}', weight=2)     # expr followed by more
-        
-    D('expr(seq)', '({0})', weight=3)
-    D('expr(seq)', '[{0}]', weight=2)
-    D('expr(seq)', '<{0}>', weight=1)
-    
-    if include_unicode:
-        D('expr(seq)', '⟨{0}⟩', weight=0.5)   # mathematical angle
-        D('expr(seq)', '⟦{0}⟧', weight=0.5)   # white square (semantic brackets)
-        D('expr(seq)', '⟪{0}⟫', weight=0.5)   # double angle
-    
-    if allow_atoms:
-        D('expr', '()', weight=1)
-        D('expr', '[]', weight=0.75)
-        D('expr', '<>', weight=0.5)
-        
-        if include_unicode:
-            D('expr', '⟨⟩', weight=0.2)
-            D('expr', '⟦⟧', weight=0.2)
-            D('expr', '⟪⟫', weight=0.2)
+    # Each bracket pair as: open seq close
+    for i, (o, c) in enumerate(pairs):
+        w = 3 if i < 3 else 0.5  # Lower weight for unicode
+        D('expr(seq)', f'{o} {{0}} {c}', weight=w)
     
     return D
 

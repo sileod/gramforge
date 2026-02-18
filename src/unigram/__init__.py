@@ -1,4 +1,5 @@
 from .generate import generate
+from .generate_choices import generate_with_choices, generate_choices_batch
 from .grammar import Substitution, init_grammar, Constraint
 
 
@@ -21,9 +22,10 @@ def unigram_to_nltk(g, lang_index=0):
         if not r.args:
             # If dynamic (lambda), call once to get a static repr; else use string
             val = tmpl() if callable(tmpl) else tmpl
-            # Clean whitespace, NLTK treats strings as tokens
-            if str(val).strip(): 
+            # Handle epsilon: empty string -> empty rhs (NLTK supports this)
+            if str(val).strip():
                 rhs.append(str(val).strip())
+            # else: rhs stays empty for epsilon production
 
         # 2. Non-Terminals with String Templates (e.g., "{0} + {1}")
         elif isinstance(tmpl, str):
