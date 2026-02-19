@@ -99,6 +99,7 @@ class FastProduction:
         return True
 
     def render(self, lang=None):
+        if isinstance(lang, int): lang = self.rule.langs[lang]
         if lang in self.cache: return self.cache[lang]
         if not self.rule: return "#" + self.type
         template = self.rule.templates.get(lang)

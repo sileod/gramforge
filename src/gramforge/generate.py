@@ -2,8 +2,10 @@ from .generate_recursive import generate_recursive
 from .generate_sequential import generate_sequential
 import random
 
-def generate(start, depth=10, n_iter=10_000, mode='sequential', seed=None, min_depth=None, *args, **kwargs):
+def generate(start, depth=10, n_iter=10_000, mode='sequential', max_depth=None, seed=None, min_depth=None, *args, **kwargs):
     random.seed(seed)
+    if max_depth is not None:
+        depth = max_depth
     if type(start)==type:
         start=start.start()
 

@@ -94,6 +94,8 @@ SUBSTITUTION_PATTERN = re.compile(r"(\d+)\[\?←(.+?)\]")
 default_preprocess_template = lambda s: (re.sub(r'(\d+)', r'{\1}', s) if type(s)==str and '←' not in s else s)
 
 def init_grammar(langs, name='', preprocess_template=default_preprocess_template):
+    if any(isinstance(l, int) for l in langs):
+        raise ValueError(f"Lang names must be strings, got integers in {langs} (ints are reserved for positional indexing)")
     class Rule:
         _instances = []
     
