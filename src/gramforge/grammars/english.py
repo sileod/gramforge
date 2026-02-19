@@ -1,4 +1,4 @@
-from unigram import init_grammar
+from gramforge import init_grammar
 
 def simple_english_grammar(cap=3, questions=True):
     R = init_grammar(['eng'], preprocess_template=lambda s: s)

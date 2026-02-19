@@ -5,7 +5,7 @@ import random
 import re
 from easydict import EasyDict as edict
 import numpy as np
-from unigram.grammar import Substitution
+from gramforge.grammar import Substitution
 
 class FastProduction:
     """

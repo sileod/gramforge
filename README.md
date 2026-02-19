@@ -1,14 +1,15 @@
-# unigram
-Unigram is a library for random (depth first) generation with context-sensitive grammars (but also context free grammars) for synthetic data creation.
+# gramforge
+
+Gramforge (formerly unigram) is a library for random (depth first) generation with context-sensitive grammars (but also context free grammars) for synthetic data creation.
 
 One particularity is the option to generate in multiple languages in parallel (for example, tptp and pseudo-english).
 
 Example with LogicNLI grammar:
 
-`pip install unigram`
+`pip install gramforge`
 
 ```python
-from unigram import init_grammar, generate
+from gramforge import init_grammar, generate
 def LogicNLI():
     ADJECTIVES = ['rich', 'quiet', 'old', 'tall', 'kind', 'brave', 'wise',
                   'happy', 'strong', 'curious', 'patient', 'funny', 'generous', 'humble']
@@ -62,14 +63,26 @@ We feature pre-written grammars including:
 
 Example:
 ```python
-from unigram.grammars import FOL_grammar, tinypy_grammar
-from unigram import generate
+from gramforge.grammars import FOL_grammar, tinypy_grammar
+from gramforge import generate
 g=tinypy_grammar()
 x=generate(g)
 print(x@'py')
 ```
 
-### Citation for the unigram framework:
+## Migration from unigram
+
+If you are upgrading from the `unigram` package, simply replace your imports:
+```python
+# Before
+from unigram import init_grammar, generate
+# After
+from gramforge import init_grammar, generate
+```
+
+The `pip install unigram` package will continue to work and re-export everything from `gramforge` with a deprecation warning.
+
+### Citation for the gramforge framework:
 ```
 @inproceedings{sileo-2024-scaling,
     title = "Scaling Synthetic Logical Reasoning Datasets with Context-Sensitive Declarative Grammars",

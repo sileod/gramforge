@@ -1,6 +1,6 @@
 [tool.poetry]
-name = "unigram"
-version = "0.15.3"
+name = "gramforge"
+version = "1.0.0"
 description = ""
 authors = ["Damien Sileo"]
 license = "MIT"
