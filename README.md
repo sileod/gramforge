@@ -1,13 +1,10 @@
-# gramforge
+# gramforge ⚒️
 
-Gramforge (formerly unigram) is a library for random (depth first) generation with context-sensitive grammars (but also context free grammars) for synthetic data creation.
-
+`gramforge` (formerly unigram) is a pythonic library for random (depth first) generation with context-sensitive grammars (but also context free grammars) for synthetic data creation.
 One particularity is the option to generate in multiple languages in parallel (for example, tptp and pseudo-english).
 
 Example with LogicNLI grammar:
-
 `pip install gramforge`
-
 ```python
 from gramforge import init_grammar, generate
 def LogicNLI():
@@ -45,7 +42,6 @@ def LogicNLI():
     R('rule(fact,fact)', '(0)<=>(1)', 'if 0 then 1 and vice versa')
     return R
 
-
 eng, tptp = "eng","tptp"
 grammar = LogicNLI()
 x=generate(grammar)
@@ -57,9 +53,10 @@ print(x@tptp)
 
 We feature pre-written grammars including:
 - `tinypy_grammar`, reproducing the [tinypy](https://github.com/MarwaNair/TinyPy-Generator), a synthetic toy grammar of python for LLM training/evaluation
-- `FOL_grammar`, a sophisticated controlled grammar for first order logic aligned with simplified English
+- `FOL_grammar`, a sophisticated controlled grammar for first order logic (tptp) aligned with simplified English
 - `arith_grammar` (a simple grammar for arithmeics)
 - `regex_grammar`, a grammar generating regular expressions
+- `dyck_grammar` (nested parentheses)
 
 Example:
 ```python
@@ -70,17 +67,9 @@ x=generate(g)
 print(x@'py')
 ```
 
-## Migration from unigram
+# Abstract syntax trees
+Generated expressions (`x.generate` behave like anytree trees, fully exposing the abstract syntax tree which can be helpful for debugging, visualization or analysis of the generated examples).
 
-If you are upgrading from the `unigram` package, simply replace your imports:
-```python
-# Before
-from unigram import init_grammar, generate
-# After
-from gramforge import init_grammar, generate
-```
-
-The `pip install unigram` package will continue to work and re-export everything from `gramforge` with a deprecation warning.
 
 ### Citation for the gramforge framework:
 ```
