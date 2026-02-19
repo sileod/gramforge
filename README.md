@@ -3,10 +3,11 @@
 `gramforge` (formerly unigram) is a pythonic library for random (depth first) generation with context-sensitive grammars (but also context free grammars) for synthetic data creation.
 One particularity is the option to generate in multiple languages in parallel (for example, tptp and pseudo-english).
 
-Example with LogicNLI grammar:
-`pip install gramforge`
+Example with LogicNLI grammar:  
+`pip install gramforge`  
 ```python
 from gramforge import init_grammar, generate
+
 def LogicNLI():
     ADJECTIVES = ['rich', 'quiet', 'old', 'tall', 'kind', 'brave', 'wise',
                   'happy', 'strong', 'curious', 'patient', 'funny', 'generous', 'humble']
