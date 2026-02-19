@@ -53,11 +53,11 @@ print(x@tptp)
 ## Pre-loaded grammars
 
 We feature pre-written grammars including:
-- `tinypy_grammar`, reproducing the [tinypy](https://github.com/MarwaNair/TinyPy-Generator), a synthetic toy grammar of python for LLM training/evaluation
-- `FOL_grammar`, a sophisticated controlled grammar for first order logic (tptp) aligned with simplified English
-- `arith_grammar` (a simple grammar for arithmeics)
-- `regex_grammar`, a grammar generating regular expressions
-- `dyck_grammar` (nested parentheses)
+- `tinypy_grammar` reproducing the [tinypy](https://github.com/MarwaNair/TinyPy-Generator), a synthetic toy grammar of python for LLM training/evaluation
+- `FOL_grammar` a sophisticated controlled grammar for first order logic (tptp) aligned with simplified English
+- `arith_grammar` a simple grammar for arithmetics
+- `regex_grammar` a grammar generating regular expressions
+- `dyck_grammar` nested parentheses
 
 Example:
 ```python
