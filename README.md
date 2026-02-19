@@ -68,9 +68,11 @@ x=generate(g)
 print(x@'py')
 ```
 
-# Abstract syntax trees
+## Abstract syntax trees
 Generated expressions (`x.generate` behave like anytree trees, fully exposing the abstract syntax tree which can be helpful for debugging, visualization or analysis of the generated examples).
 
+## Depth constraints
+Generating synthetic data requires complexity management. gramforge implements efficient management of min_depth and max_depth constraints, with a "bushiness" knob (default=0.7) preventing the generated expressions from generating "spikes" that just overfit the minimum depth requirement.
 
 ### Citation for the gramforge framework:
 ```
