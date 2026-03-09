@@ -6,23 +6,62 @@ from appdirs import user_data_dir
 import pooch
 import json
 
+def _vampire_works(path):
+    """Return True if the binary at *path* actually runs."""
+    try:
+        subprocess.run([path, "--version"], capture_output=True, timeout=5)
+        return True
+    except Exception:
+        return False
+
+
+def _build_vampire(cache_dir):
+    """Clone & build Vampire from source; return path to the binary."""
+    src = os.path.join(cache_dir, "vampire-src")
+    build = os.path.join(src, "build")
+    binary = os.path.join(build, "bin", "vampire")
+    if os.path.isfile(binary) and _vampire_works(binary):
+        return binary
+    shutil.rmtree(src, ignore_errors=True)
+    subprocess.check_call(["git", "clone", "--depth", "1",
+                           "https://github.com/vprover/vampire.git", src])
+    os.makedirs(build, exist_ok=True)
+    subprocess.check_call(["cmake", ".."], cwd=build)
+    subprocess.check_call(["make", f"-j{os.cpu_count() or 1}"], cwd=build)
+    if not os.path.isfile(binary):
+        # some cmake configs put it directly in build/
+        alt = os.path.join(build, "vampire")
+        if os.path.isfile(alt):
+            binary = alt
+    assert os.path.isfile(binary), f"Vampire build failed – no binary at {binary}"
+    return binary
+
+
 def get_vampire_path():
+    # 1. already on PATH
     path = shutil.which("vampire")
-    if path:
+    if path and _vampire_works(path):
         return path
 
     cache_dir = user_data_dir("vampire-wrapper")
     os.makedirs(cache_dir, exist_ok=True)
 
-    vampire_path = pooch.retrieve(
-        url="https://github.com/vprover/vampire/releases/download/v4.9casc2024/vampire",
-        fname="vampire",
-        path=cache_dir,
-        known_hash=None  # Optional
-    )
+    # 2. try prebuilt release download
+    try:
+        vampire_path = pooch.retrieve(
+            url="https://github.com/vprover/vampire/releases/download/v4.9casc2024/vampire",
+            fname="vampire",
+            path=cache_dir,
+            known_hash=None,
+        )
+        os.chmod(vampire_path, os.stat(vampire_path).st_mode | stat.S_IEXEC)
+        if _vampire_works(vampire_path):
+            return vampire_path
+    except Exception:
+        pass
 
-    os.chmod(vampire_path, os.stat(vampire_path).st_mode | stat.S_IEXEC)
-    return vampire_path
+    # 3. fallback: build from source
+    return _build_vampire(cache_dir)
 
 
 VAMPIRE_PATH = get_vampire_path()
