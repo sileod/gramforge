@@ -9,32 +9,46 @@ import json
 def _vampire_works(path):
     """Return True if the binary at *path* actually runs."""
     try:
-        subprocess.run([path, "--version"], capture_output=True, timeout=5)
-        return True
+        r = subprocess.run([path, "--version"], capture_output=True, timeout=5)
+        return r.returncode == 0
     except Exception:
         return False
+
+
 
 
 def _build_vampire(cache_dir):
     """Clone & build Vampire from source; return path to the binary."""
     src = os.path.join(cache_dir, "vampire-src")
     build = os.path.join(src, "build")
-    binary = os.path.join(build, "bin", "vampire")
-    if os.path.isfile(binary) and _vampire_works(binary):
-        return binary
+    candidates = [os.path.join(build, "bin", "vampire"),
+                  os.path.join(build, "vampire")]
+
+    for b in candidates:
+        if os.path.isfile(b) and _vampire_works(b):
+            return b
+
     shutil.rmtree(src, ignore_errors=True)
     subprocess.check_call(["git", "clone", "--depth", "1",
+                           "--branch", "v4.9casc2024",
                            "https://github.com/vprover/vampire.git", src])
+
+    subprocess.check_call(
+        ["git", "submodule", "update", "--init", "--recursive"],
+        cwd=src,                       # must run from the repo root
+    )
+
     os.makedirs(build, exist_ok=True)
     subprocess.check_call(["cmake", ".."], cwd=build)
-    subprocess.check_call(["make", f"-j{os.cpu_count() or 1}"], cwd=build)
-    if not os.path.isfile(binary):
-        # some cmake configs put it directly in build/
-        alt = os.path.join(build, "vampire")
-        if os.path.isfile(alt):
-            binary = alt
-    assert os.path.isfile(binary), f"Vampire build failed – no binary at {binary}"
-    return binary
+
+    jobs = min(os.cpu_count() or 1, 8)
+    subprocess.check_call(["make", f"-j{jobs}"], cwd=build)
+
+    for b in candidates:
+        if os.path.isfile(b):
+            return b
+    raise FileNotFoundError(f"Vampire build failed – no binary in {candidates}")
+
 
 
 def get_vampire_path():
@@ -149,7 +163,7 @@ def extract_inferences_and_formulas(proof):
             continue
         x=x.split('[')[-1].strip(']')        
         if x.startswith('input'):
-            inputs.append(x.replace('input ',''))
+            inputs.append(x.split(' ')[-1])
         inferences.append(x.rsplit(' ',-1)[0])
     return inferences,inputs
 
