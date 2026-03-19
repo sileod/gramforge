@@ -1,3 +1,11 @@
+"""
+Constraint:
+all elements should be logically independant
+for all p, q in the predicates/propositions
+p (atom or predicates) does not entail nor contradict q or ~q
+even if correlated or linked
+"""
+
 def negate_predicate(predicate):
     replacements = {
         "is ": "is not ",
@@ -22,31 +30,26 @@ short_propositions = [
     "Gravity inverts in Oakhaven on Tuesdays.",
     "A tree in Whispering Woods has golden fruit.",
     "A square cloud is over Silver Lake.",
-    "Blackwood Manor's mirrors show the future.",
-    "Avani's people eat only blue moss.",
+    "The lighthouse on Cape Sorrow glows green.",
+    "The Great Library of Alexandria still exists.",
     "A singing flower blooms in the Amazon.",
     "John Smith's car runs on ethanol.",
-    "Eldoria's children talk to animals."
+    "The clock tower in Chronos strikes thirteen times."
 ]
 
-
-
-
+# neg of short_propositions, same order
 neg_short_propositions = [
     "Planet Xylos has no diamond rain.",
     "Not all Bellbridge's houses are purple.",
     "Gravity does not invert in Oakhaven on Tuesdays.",
     "No tree in Whispering Woods has golden fruit.",
     "No square cloud is over Silver Lake.",
-    "Blackwood Manor's mirrors do not show the future.",
-    "Avani's people do not eat only blue moss.",
+    "The lighthouse on Cape Sorrow does not glow green.",
+    "The Great Library of Alexandria does not exist.",
     "No singing flower blooms in the Amazon.",
     "John Smith's car does not run on ethanol.",
-    "Eldoria's children do not talk to animals."
+    "The clock tower in Chronos does not strike thirteen times."
 ]
- 
-#are any of those logically entailing or contradicting each other in a clear-cut way?
-# I'm not talking about slight contrast, correlation or negataive correlation
 
 predicates = [
     "is a client of Meta", "is a client of Costco", "is a client of LVMH", "uses an ios phone",
@@ -61,9 +64,9 @@ predicates = [
     "practices tai chi", "practices zumba", "practices archery", "practices kickboxing",
     "enjoys skydiving", "collects foreign coins", "collects vintage stamps", "collects modern art",
     "collects vintage vinyl records", "collects action figures", "collects antique clocks",
-    "collect rare sneakers", "collects antique jewelry", "collects luxury watches", "collects first edition books",
-    "collects classic novels", "collects comic books", "enjoys fishing", "enjoys stargazing",
-    "practices urban gardening", "enjoys rooftop gardening", "owns a microscope",
+    "collects rare sneakers", "collects antique jewelry", "collects luxury watches", "collects vintage maps",
+    "collects classic novels", "collects comic books", "enjoys fishing", "enjoys naked-eye stargazing",
+    "practices urban gardening", "enjoys bonsai cultivation", "owns a microscope",
     "works on fridays", "drives a hybrid car", "has a pet dog", "is right-handed", "is a night owl", "uses contact lenses",
     "has a tattoo", "has a piercing", "travels domestically frequently", "is allergic to anything",
     "has lived in exactly three countries", "knows morse code", "makes homemade flans", "bakes bread at home",
@@ -84,14 +87,14 @@ predicates = [
     "plays as a goalkeeper for a local amateur soccer team", "participates in long-distance cycling events across the country",
     "is an avid mountain climber who has scaled several peaks", "mentors a youth basketball team on weekends",
     "competes in national level swimming championships", "practices and performs acrobatic dance routines",
-    "enjoys deep-sea diving and exploring underwater caves",
+    "enjoys white-water rafting",
     "collects rare and antique scientific instruments", "has a vast collection of first-edition science fiction novels",
     "owns an extensive assortment of vintage comic book memorabilia", "is passionate about collecting and restoring classic cars",
-    "collects limited-edition art prints from contemporary artists", "has a curated collection of mid-century modern furniture",
+    "has a curated collection of mid-century modern furniture",
     "collects historical artifacts related to ancient civilizations", "owns a significant collection of rare gemstones and minerals",
     "is an avid collector of autographed memorabilia from famous musicians", "has a specialized collection of handmade artisan pottery",
     "is an enthusiastic bird watcher who travels for rare sightings", "maintains a large, organic vegetable garden year-round",
-    "volunteers for local environmental conservation projects", "regularly goes on multi-day backpacking trips in national parks",
+    "volunteers for local environmental conservation projects",
     "enjoys kayaking and exploring remote waterways", "is a certified scuba diver with advanced underwater photography skills",
     "participates in citizen science projects related to wildlife monitoring", "is an expert in identifying and foraging wild edible plants",
     "enjoys camping and organizing outdoor survival workshops", "is dedicated to sustainable living and zero-waste practices",

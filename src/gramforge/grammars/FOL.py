@@ -17,7 +17,10 @@ ADJS=['rich','quiet','old','tall','kind','brave','wise','happy','creative',
 ADJS+=['left_handed','curly_haired','popular','romantic','blue_eyed','long_haired','scarred','colorblind']
     
 
-def FOL_grammar(N_PREMS=8, names=NAMES, adjs=ADJS, empty_room=True):
+def FOL_grammar(
+        N_PREMS=8, names=NAMES, adjs=ADJS,
+        include_propositional=False, empty_room=True
+    ):
     
     R=init_grammar(['tptp','eng'])
     R('start(setup)', '0')
@@ -32,8 +35,12 @@ def FOL_grammar(N_PREMS=8, names=NAMES, adjs=ADJS, empty_room=True):
         in_room="&".join([f"room({x})" for x in persons])
         disj="|".join([f"X='{x}'" for x in persons])
 
-        dist = ('&'.join('({}!={})'.format(*a) for a in itertools.product(persons,persons) if len(set(a))!=1))
-        tptp_setup=in_room + f'&(dist)' + f"&(![X]:(room(X)=>({disj})))&\n{x[0]@tptp}" 
+        if persons:
+            dist = ('&'.join('({}!={})'.format(*a) for a in itertools.product(persons,persons) if len(set(a))!=1))
+            dist = f'&({dist})' if dist else ''
+        else:
+            dist = ''
+        tptp_setup=in_room + dist + f"&(![X]:(room(X)=>({disj})))&\n{x[0]@tptp}" 
         return tptp_setup,eng_setup
     
     room = 'room'
@@ -130,10 +137,10 @@ def FOL_grammar(N_PREMS=8, names=NAMES, adjs=ADJS, empty_room=True):
 
         
     props = ['propositiona', 'propositionb', 'propositionc','propositiond','propositione']
-    props=[]
-    for p in props:
-        R('prop',p)
-        R('prop',"~"+p)
+    if include_propositional:
+        for p in props:
+            R('prop',p)
+            R('prop',"~"+p)
     
     R('term(prop)','0')
     R('term(prop,prop)','((0)&(1))','“0” and “1”')
@@ -255,8 +262,8 @@ def FOL_grammar(N_PREMS=8, names=NAMES, adjs=ADJS, empty_room=True):
     #unless, otherwise
     
     #implication as disjunction for hypothesis (more explicit)
-    R('cproperty(neg_property,property)', '((0)|(1))', '1 or 0',weight=0.5,state_constraint=block_property) 
-    R('cproperty(property,neg_property)', '((0)|(1))', '1 or 0',weight=0.5,state_constraint=block_property) 
+    R('cproperty(neg_property,property)', '((0)|(1))', 'either 1 or 0 or both',weight=0.5,state_constraint=block_property) 
+    R('cproperty(property,neg_property)', '((0)|(1))', 'either 1 or 0 or both',weight=0.5,state_constraint=block_property) 
     
     
     R('X_property(cproperty)','0[?←X]','0')
@@ -311,8 +318,9 @@ def FOL_grammar(N_PREMS=8, names=NAMES, adjs=ADJS, empty_room=True):
                 return False
         return True
     
+    p = persons if 'persons' in locals() else []
     R('hypothesis(term)', '0', '0',  state_constraint=[neg_constraint, hyp_cst],
-      vars=dict(persons=persons,room=room))
+      vars=dict(persons=p,room=room))
 
 
     
