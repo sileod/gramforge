@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "gramforge"
-version = "1.0.2"
-description = ""
+version = "1.0.8"
+description = "Efficient and multi-language generation from context free or sensitive grammars (CFG/CSG)"
 authors = ["Damien Sileo"]
 license = "MIT"
 readme = "README.md"
