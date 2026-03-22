@@ -78,3 +78,23 @@ def regex_grammar():
         R('predef', s, weight=0.25)
 
     return R
+
+FOL_grammar.name = 'fol'
+arith_grammar.name = 'arith'
+dyck_grammar.name = 'dyck'
+simple_english_grammar.name = 'english'
+regex_grammar.name = 'regex'
+tinypy_grammar.name = 'tinypy'
+
+GRAMMAR_FACTORIES = (
+    FOL_grammar,
+    arith_grammar,
+    dyck_grammar,
+    simple_english_grammar,
+    regex_grammar,
+    tinypy_grammar,
+)
+
+
+def list_grammars():
+    return tuple(sorted(factory.name for factory in GRAMMAR_FACTORIES))
