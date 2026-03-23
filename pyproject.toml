@@ -12,6 +12,13 @@ anytree = "^2"
 networkx = "*"
 funcy = "*"
 exrex = "*"
+easydict = "*"
+numpy = "*"
+pandas = "*"
+tqdm = "*"
+psutil = "*"
+faker = "*"
+nltk = "*"
 
 [build-system]
 requires = ["poetry-core"]
