@@ -1,4 +1,5 @@
 import argparse
+import importlib.util
 import random
 import statistics
 import sys
@@ -10,6 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'src'
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
+
+PANDAS_AVAILABLE = importlib.util.find_spec('pandas') is not None
+
+if PANDAS_AVAILABLE:
+    import pandas as pd
 
 
 def install_stubs():
@@ -24,28 +30,8 @@ def install_stubs():
     numpy.floor = lambda x: int(x // 1)
     sys.modules.setdefault('numpy', numpy)
 
-    pandas = types.ModuleType('pandas')
-    class DataFrame:
-        def __init__(self, rows):
-            self.rows = list(rows)
-
-        def to_markdown(self, index=False):
-            if not self.rows:
-                return ''
-            columns = list(self.rows[0])
-            widths = {
-                col: max(len(str(col)), max(len(str(row.get(col, ''))) for row in self.rows))
-                for col in columns
-            }
-            header = '| ' + ' | '.join(f'{col:{widths[col]}}' for col in columns) + ' |'
-            divider = '| ' + ' | '.join('-' * widths[col] for col in columns) + ' |'
-            body = [
-                '| ' + ' | '.join(f'{str(row.get(col, "")):{widths[col]}}' for col in columns) + ' |'
-                for row in self.rows
-            ]
-            return '\n'.join([header, divider] + body)
-    pandas.DataFrame = DataFrame
-    sys.modules.setdefault('pandas', pandas)
+    if not PANDAS_AVAILABLE:
+        sys.modules.setdefault('pandas', types.ModuleType('pandas'))
 
     psutil = types.ModuleType('psutil')
     sys.modules.setdefault('psutil', psutil)
@@ -91,7 +77,6 @@ from gramforge.grammars import (
     simple_english_grammar,
     tinypy_grammar,
 )
-import pandas as pd
 
 ALGORITHMS = {
     'sequential': generate_sequential,
@@ -243,6 +228,9 @@ def render_markdown(results, *, runs, max_steps, bushiness, k, algorithms, cases
 
 
 def main():
+    if not PANDAS_AVAILABLE:
+        raise RuntimeError('compare_generate_algorithms.py requires pandas so it can use DataFrame.to_markdown().')
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--grammars', nargs='*', default=['arith', 'dyck', 'english', 'fol', 'tinypy'])
     parser.add_argument('--algorithms', nargs='*', default=['sequential', 'sequential_opt'])
