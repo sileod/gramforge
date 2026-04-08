@@ -93,7 +93,12 @@ SUBSTITUTION_PATTERN = re.compile(r"(\d+)\[\?←(.+?)\]")
 
 default_preprocess_template = lambda s: (re.sub(r'(\d+)', r'{\1}', s) if type(s)==str and '←' not in s else s)
 
-def init_grammar(langs, name='', preprocess_template=default_preprocess_template):
+def init_grammar(
+    langs,
+    name='',
+    preprocess_template=default_preprocess_template,
+    default_separator=' ',
+):
     if any(isinstance(l, int) for l in langs):
         raise ValueError(f"Lang names must be strings, got integers in {langs} (ints are reserved for positional indexing)")
     class Rule:
@@ -104,7 +109,15 @@ def init_grammar(langs, name='', preprocess_template=default_preprocess_template
             Rule.langs = langs
             Rule._instances = []
             Rule.preprocess_template = preprocess_template
+            Rule.default_separator = default_separator
             return langs
+
+        @staticmethod
+        def _default_template(num_args):
+            if num_args <= 0:
+                return ''
+            slots = [str(i) for i in range(num_args)]
+            return Rule.default_separator.join(slots)
     
         def __init__(self, signature, *args, constraint=[], state_constraint=[], vars=dict(), weight=1):
             self.signature=signature
@@ -114,7 +127,8 @@ def init_grammar(langs, name='', preprocess_template=default_preprocess_template
             self.templates = {}
             self.weight=weight
             self.state = vars
-            for lang, template in zip(Rule.langs, args*2):
+            templates = args if args else (Rule._default_template(len(self.args)),)
+            for lang, template in zip(Rule.langs, templates*2):
                 self.templates[lang] = Rule.preprocess_template(template)
             self.index = len(Rule._instances)
             Rule._instances.append(self)
