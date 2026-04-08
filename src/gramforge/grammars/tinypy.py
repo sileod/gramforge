@@ -8,7 +8,7 @@ def tinypy_grammar(level=None, max_number=16):
     # 1. State Store & Reset Logic
     # -------------------------------------------------------------------------
     # This dictionary persists across generation calls, so we must reset it manually.
-    state = {'assigned': {}, 'last': set(), 'loops': {}}
+    state = {'assigned': {}, 'last': set(), 'loops': {}, 'list_vars': set(), 'str_vars': set(), 'numeric_vars': set()}
     chars = list("abcdefghijklmnopqrstuvwxyz")
 
     def reset_state(ctx_node):
@@ -16,6 +16,9 @@ def tinypy_grammar(level=None, max_number=16):
         state['assigned'].clear()
         state['last'].clear()
         state['loops'].clear()
+        state['list_vars'].clear()
+        state['str_vars'].clear()
+        state['numeric_vars'].clear()
         return "" # Render nothing, just side-effect
 
     # -------------------------------------------------------------------------
@@ -32,26 +35,48 @@ def tinypy_grammar(level=None, max_number=16):
         v = random.choice(candidates if candidates else chars)
         d = str(random.randint(0, max_number))
         state['assigned'][v] = d
+        state['numeric_vars'].add(v)
         return f"{v} = {d}\n"
 
-    def render_assign(v_node, e_node):
+    def render_assign(v_node, e_node, kind='num'):
         """Updates 'last' variable tracking on assignment."""
         v, e = v_node.render('py'), e_node.render('py')
         state['last'].clear()
         state['last'].add(v)
         # Ensure it's marked as assigned
         state['assigned'][v] = state['assigned'].get(v, '0')
+        state['list_vars'].discard(v)
+        state['str_vars'].discard(v)
+        state['numeric_vars'].discard(v)
+        if kind == 'list':
+            state['list_vars'].add(v)
+        elif kind == 'str':
+            state['str_vars'].add(v)
+        else:
+            state['numeric_vars'].add(v)
         return f"{v} = {e}\n"
 
-    def get_var(ctx):
-        """Returns a known variable, or falls back if none exist."""
-        if state['assigned']: return random.choice(list(state['assigned'].keys()))
+    def get_assigned_var(ctx):
+        """Returns a known variable name, creating one if state is empty."""
+        if state['numeric_vars']:
+            return random.choice(list(state['numeric_vars']))
+        if state['assigned']:
+            return random.choice(list(state['assigned'].keys()))
+        v = random.choice(chars)
+        state['assigned'][v] = '0'
+        state['numeric_vars'].add(v)
+        return v
+
+    def get_atom(ctx):
+        """Returns an arithmetic atom: a variable or a literal."""
+        if state['assigned'] and random.random() < 0.7:
+            return get_assigned_var(ctx)
         return str(random.randint(0, max_number))
 
     def get_last_var(ctx):
         """Returns the most recently modified variable (for print)."""
         if state['last']: return list(state['last'])[0]
-        return get_var(ctx)
+        return get_assigned_var(ctx)
 
     def render_loop_math(ctx_node, mode):
         """Calculates Loop Bounds (Init/Step/Final) to ensure math coherence."""
@@ -71,9 +96,7 @@ def tinypy_grammar(level=None, max_number=16):
 
     def render_while_var(ctx_node):
         """Selects a variable for a while loop and caches it."""
-        v = get_var(ctx_node)
-        # If we picked a digit by accident (fallback), pick a char
-        if v.isdigit(): v = random.choice(chars)
+        v = get_assigned_var(ctx_node)
         state['loops']['var'] = v
         state['loops']['val'] = state['assigned'].get(v, '0')
         return v
@@ -84,6 +107,20 @@ def tinypy_grammar(level=None, max_number=16):
         s = state['loops'].get('step', '1')
         return f"{v} = {v} {op} {s}"
 
+    def render_cond_expr(v1_node, op_node, v2_node):
+        """Render var-vs-var conditions while limiting degenerate tautologies."""
+        lhs = v1_node.render('py')
+        op = op_node.render('py')
+        rhs = v2_node.render('py')
+
+        # Keep self-comparisons occasionally (they can be pedagogically useful),
+        # but avoid making them dominant.
+        if lhs == rhs and random.random() < 0.8:
+            alternatives = [c for c in state['numeric_vars'] if c != lhs]
+            if alternatives:
+                rhs = random.choice(alternatives)
+        return f"{lhs} {op} {rhs}"
+
     # -------------------------------------------------------------------------
     # 3. Grammar Definition
     # -------------------------------------------------------------------------
@@ -92,21 +129,31 @@ def tinypy_grammar(level=None, max_number=16):
 
     # Terminals
     R('DIGIT', lambda: str(random.randint(0, max_number)))
+    R('SMALL_INDEX', lambda: str(random.randint(0, 1)))
+    R('STR_LIT', lambda: random.choice(['"hi"', '"cat"', '"go"', '"sun"']))
+    R('LIST_LIT(DIGIT, DIGIT, DIGIT)', '[0, 1, 2]')
     R('VAR(CTX)', lambda x: random.choice(chars))
-    for op in ['+', '-', '*', '/']: R('ARITH_OP', op)
+    for op in ['+', '-', '*']: R('ARITH_OP', op)
     for op in ['<', '>', '<=', '>=', '!=', '==']: R('REL_OP', op)
     R('LOG_PREFIX', 'not ')
     for op in ['and', 'or']: R('LOG_INFIX', op)
 
     # Expressions
-    R('EXPR_ID(CTX)', get_var)
+    R('EXPR_ID(CTX)', get_assigned_var)
+    R('ATOM(CTX)', get_atom)
     R('TERM(EXPR_ID)', '0'); R('TERM(DIGIT)', '0')
+    R('TERM(ATOM)', '0')
     R('EXPRESSION(TERM, ARITH_OP, TERM)', '0 1 2')
+    R('EXPRESSION(TERM)', '0', weight=0.35)
     R('ENCLOSED(EXPRESSION)', '(0)')
 
     R('DISP_ID(CTX)', get_last_var)
     R('DISP_EXPR(EXPR_ID, ARITH_OP, EXPR_ID)', '0 1 2')
     R('DISP_EXPR(EXPR_ID, ARITH_OP, DIGIT)', '0 1 2')
+    R('LEN_EXPR(STR_LIT)', 'len(0)')
+    R('LEN_EXPR(LIST_LIT)', 'len(0)')
+    R('INDEX_EXPR(LIST_LIT, SMALL_INDEX)', '0[1]')
+    R('STR_INDEX_EXPR(STR_LIT, SMALL_INDEX)', '0[1]')
 
     # Initializations
     R('INIT(CTX)', render_init)
@@ -125,11 +172,15 @@ def tinypy_grammar(level=None, max_number=16):
 
     R('ADV_ASSIGN_TYPE(VAR, SIMPLE_ARITH)', render_assign)
     R('ADV_ASSIGN_TYPE(VAR, EXPRESSION)', render_assign)
+    R('ADV_ASSIGN_TYPE(VAR, STR_LIT)', lambda v, e: render_assign(v, e, kind='str'))
+    R('ADV_ASSIGN_TYPE(VAR, LIST_LIT)', lambda v, e: render_assign(v, e, kind='list'))
+    R('ADV_ASSIGN_TYPE(VAR, LEN_EXPR)', render_assign)
+    R('ADV_ASSIGN_TYPE(VAR, INDEX_EXPR)', render_assign)
     R('ADV_ASSIGNS', '')
     R('ADV_ASSIGNS(ADV_ASSIGN_TYPE)', '0')
 
     # Conditions
-    R('COND_EXPR(EXPR_ID, REL_OP, EXPR_ID)', '0 1 2')
+    R('COND_EXPR(EXPR_ID, REL_OP, EXPR_ID)', render_cond_expr)
     R('COND_EXPR(EXPR_ID, REL_OP, DIGIT)', '0 1 2')
     R('COND(COND_EXPR)', '0')
     R('COND(LOG_PREFIX, COND_EXPR)', '01')
@@ -148,16 +199,24 @@ def tinypy_grammar(level=None, max_number=16):
     R('DISPLAY(DISP_ID)', 'print(0)')
     R('ADV_DISP(DISPLAY)', '0')
     R('ADV_DISP(DISP_EXPR)', 'print(0)')
+    R('ADV_DISP(STR_LIT)', 'print(0)')
+    R('ADV_DISP(LIST_LIT)', 'print(0)')
+    R('ADV_DISP(LEN_EXPR)', 'print(0)')
+    R('ADV_DISP(INDEX_EXPR)', 'print(0)')
+    R('ADV_DISP(STR_INDEX_EXPR)', 'print(0)')
+    R('BODY_STMT(DISPLAY)', '0')
+    R('BODY_STMT(SIMPLE_ASSIGN)', '0')
+    R('BODY_STMT(ADV_ASSIGN_TYPE)', '0')
 
     # Loops
     R('FOR_INIT(CTX)', lambda x: render_loop_math(x, 'init'))
     R('FOR_FINAL(CTX)', lambda x: render_loop_math(x, 'final_less'))
     R('STEP(CTX)', lambda x: state['loops'].get('step', '1'))
     
-    R('FOR_HEAD(EXPR_ID, FOR_INIT, FOR_FINAL, STEP)', 'for 0 in range(1, 2, 3):')
-    R('FOR_HEAD(EXPR_ID, FOR_INIT, FOR_FINAL)', 'for 0 in range(1, 2):')
-    R('FOR_LOOP(FOR_HEAD, DISPLAY)', '0\n\t1')
-    R('ADV_FOR(FOR_HEAD, ADV_DISP)', '0\n\t1')
+    R('FOR_HEAD(VAR, FOR_INIT, FOR_FINAL, STEP)', 'for 0 in range(1, 2, 3):')
+    R('FOR_HEAD(VAR, FOR_INIT, FOR_FINAL)', 'for 0 in range(1, 2):')
+    R('FOR_LOOP(FOR_HEAD, BODY_STMT)', '0\n\t1')
+    R('ADV_FOR(FOR_HEAD, BODY_STMT)', '0\n\t1')
     R('ADV_FOR(FOR_LOOP)', '0')
 
     R('REL_LESS', '<'); R('REL_LESS', '<=')
