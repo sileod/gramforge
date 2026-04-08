@@ -2,6 +2,7 @@ from .. import Substitution, Constraint, generate, init_grammar
 import exrex
 import funcy as fc
 import itertools
+import re
 
 C, S = Constraint, Substitution
 
@@ -25,13 +26,37 @@ def FOL_grammar(
     R=init_grammar(['tptp','eng'])
     R('start(setup)', '0')
     
+    def join_names(items):
+        titled = [name.title() for name in items]
+        if not titled:
+            return ''
+        if len(titled) == 1:
+            return titled[0]
+        if len(titled) == 2:
+            return f"{titled[0]} and {titled[1]}"
+        return f"{', '.join(titled[:-1])}, and {titled[-1]}"
+
+    def choose_article(phrase):
+        token = phrase.strip().split()[0] if phrase.strip() else ''
+        return 'an' if token[:1].lower() in 'aeiou' else 'a'
+
+    def fix_pronoun_copula(s):
+        return re.sub(r'\bthey\s+is\b', 'they are', s)
+
+    def conjugate_relation(token):
+        if token.endswith('y') and token[-2:] not in {'ay', 'ey', 'iy', 'oy', 'uy'}:
+            return token[:-1] + 'ies'
+        if token.endswith(('s', 'x', 'z', 'ch', 'sh')):
+            return token + 'es'
+        return token + 's'
+
     def render_setup(x):
         persons=x.state['persons']
         room=x.state['room']
-        persons_str = ', '.join([p.title() for p in persons])
-        eng_setup=f"{persons_str} are the only persons in the {room}.\n{x[0]@eng}"
-        if len(persons)==1:
-            eng_setup=eng_setup.replace(' are ',' is ').replace('persons','person')
+        persons_str = join_names(persons)
+        noun = 'person' if len(persons) == 1 else 'people'
+        verb = 'is' if len(persons) == 1 else 'are'
+        eng_setup=f"{persons_str} {verb} the only {noun} in the {room}.\n{x[0]@eng}"
         in_room="&".join([f"room({x})" for x in persons])
         disj="|".join([f"X='{x}'" for x in persons])
 
@@ -46,12 +71,13 @@ def FOL_grammar(
     room = 'room'
     
     def pluralize(s):
-        s=s.replace('does','do')
-        s=s.replace('is a','are')
-        s=s.replace('is ','are ')
-        s=s.replace('es ','e ')
-        s=s.replace('person','persons')
-        return s
+        s = s.replace('does', 'do')
+        s = s.replace('is not a ', 'are not ')
+        s = s.replace('is a ', 'are ')
+        s = s.replace('is ', 'are ')
+        s = s.replace('person', 'people')
+        s = s.replace(' and are ', ' and ')
+        return fix_pronoun_copula(s)
 
         
     psums = [list(names[:i]) for i in range(1, int(len(names)*0.8))]
@@ -173,8 +199,8 @@ def FOL_grammar(
     
     #R('outside_entity(entity_)','0','0',constraint=lambda x: not inside_person(x))
     
-    R('property(adj_noun)','0','is a 0',weight=2)
-    R('property(adj_noun)','~(0)','is not a 0',weight=1)
+    R('property(adj_noun)','0', lambda p: f"is {choose_article(p @ eng)} {p @ eng}", weight=2)
+    R('property(adj_noun)','~(0)', lambda p: f"is not {choose_article(p @ eng)} {p @ eng}", weight=1)
     
     R('neg_adj(neg_adj,adjective)','0&~1(?)','0, not 1',constraint=C('1∉0'))
     R('neg_adj(adjective)','~0(?)','not 0')
@@ -202,7 +228,11 @@ def FOL_grammar(
     R('term(outside_entity,entity,sentiment)','(2(0,1) & 2(1,0))', '0 and 1 2 each other')
     
     R('relation(sentiment)','0'), R('relation(predicate)','0')
-    R('term(property,property,relation)',r'\?[X,Y]:((0[?←X])&(1[?←Y])&(2(X,Y)))','someone who 0 2 someone who 1')
+    R(
+        'term(property,property,relation)',
+        r'\?[X,Y]:((0[?←X])&(1[?←Y])&(2(X,Y)))',
+        lambda a, b, rel: f"someone who {a @ eng} {conjugate_relation(rel @ eng)} someone who {b @ eng}",
+    )
     # other quantifiers are ambiguous
     
     preds = list(exrex.generate('pred[a-j]'))
@@ -210,9 +240,9 @@ def FOL_grammar(
     for i in preds:
         R('atomic_predicate',i)
     R('property(atomic_predicate)', '0(?)','0',weight=6)
-    R('property(atomic_predicate)', '~0(?)','~0',weight=1)
+    R('property(atomic_predicate)', '~0(?)','is not 0',weight=1)
     
-    R('neg_property(atomic_predicate)', '~0(?)','~0')
+    R('neg_property(atomic_predicate)', '~0(?)','is not 0')
     
     R('term(entity,property)', '1[?←0]',
       fc.rcompose(S('0 1', lang='eng'), lambda x: x.replace('they', 'he/she')),
@@ -237,7 +267,7 @@ def FOL_grammar(
     R('X_quantifier(quantifier,group)','0[X]:(1(X)=>(?))','0 1')
     
     
-    R('term(adjective,adjective,group)', '![X]:(2(X)=>(0(X)=>1(X)))','all 0 persons 2 are 1',weight=2)
+    R('term(adjective,adjective,group)', '![X]:(2(X)=>(0(X)=>1(X)))','all 0 people 2 are 1',weight=2)
     R('term(adjective,adjective,group)', '![X]:(2(X)=>(0(X)=>~1(X)))','no 0 person 2 is 1')
     
     def block_property(x):
@@ -255,10 +285,10 @@ def FOL_grammar(
     R('property(property,property,property)', '((0)|(1)|(2))', '0, 1 or 2',**kw)
     
     R('cproperty(property,property)', '((0)=>(1))', 'who 0 1',weight=4)
-    R('cproperty(property,property)', '((0)=>(1))', '1 if they 0',weight=4)
-    R('cproperty(property,property)', '((1)<=(0))', '0 only if they 1')
-    R('cproperty(property,property)', '((0)<=>(1))', '0 if they 1 and vice versa',weight=0.5)
-    R('cproperty(property,property)', '((0)<=>(1))', '0 if and only if they 1',weight=0.5)
+    R('cproperty(property,property)', '((0)=>(1))', lambda a, b: fix_pronoun_copula(f"{b @ eng} if they {a @ eng}"),weight=4)
+    R('cproperty(property,property)', '((1)<=(0))', lambda a, b: fix_pronoun_copula(f"{a @ eng} only if they {b @ eng}"))
+    R('cproperty(property,property)', '((0)<=>(1))', lambda a, b: fix_pronoun_copula(f"{a @ eng} if they {b @ eng} and vice versa"),weight=0.5)
+    R('cproperty(property,property)', '((0)<=>(1))', lambda a, b: fix_pronoun_copula(f"{a @ eng} if and only if they {b @ eng}"),weight=0.5)
     #unless, otherwise
     
     #implication as disjunction for hypothesis (more explicit)
@@ -304,7 +334,7 @@ def FOL_grammar(
     for exp in ['at_least','at_most','exactly']:
         for i in range(2,5+1):
             n={1:'one',2:'two',3:'three',4:'four',5:'five'}[i]
-            R('term(property,group)',eval(exp)(i,1,0), f'{exp.replace("_"," ")} {n} persons 1 0',weight=ws)
+            R('term(property,group)',eval(exp)(i,1,0), f'{exp.replace("_"," ")} {n} people 1 0',weight=ws)
 
 
     def hyp_cst(x):
