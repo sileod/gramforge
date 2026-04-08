@@ -9,7 +9,7 @@ class EnglishGrammarQualityTest(unittest.TestCase):
     def test_extensive_generation_smoke_and_surface_sanity(self):
         grammar = simple_english_grammar(cap=6, questions=True)
         for seed in range(250):
-            sentence = generate(grammar.start(), depth=8, seed=seed) @ 'eng'
+            sentence = generate(grammar.start(), depth=8, min_depth=6, seed=seed) @ 'eng'
             self.assertTrue(sentence, f'empty output for seed {seed}')
             self.assertNotIn('  ', sentence, f'double whitespace for seed {seed}: {sentence!r}')
             self.assertRegex(sentence, r'[.?]$', f'missing terminal punctuation for seed {seed}: {sentence!r}')
@@ -21,7 +21,7 @@ class EnglishGrammarQualityTest(unittest.TestCase):
         locative_pronoun_pp = re.compile(r'\b(in|on|under) (him|her|it|them|us)\b')
 
         for seed in range(400):
-            sentence = generate(grammar.start(), depth=8, seed=10_000 + seed) @ 'eng'
+            sentence = generate(grammar.start(), depth=8, min_depth=6, seed=10_000 + seed) @ 'eng'
             lowered = sentence.lower()
 
             for token in vowel_starts:
@@ -38,7 +38,7 @@ class EnglishGrammarQualityTest(unittest.TestCase):
     def test_higher_depth_generation_stays_well_formed(self):
         grammar = simple_english_grammar(cap=6, questions=True)
         for seed in range(150):
-            sentence = generate(grammar.start(), depth=12, seed=20_000 + seed) @ 'eng'
+            sentence = generate(grammar.start(), depth=12, min_depth=10, seed=20_000 + seed) @ 'eng'
             self.assertTrue(sentence, f'empty high-depth output for seed {seed}')
             self.assertNotIn('  ', sentence, f'double whitespace at high depth for seed {seed}: {sentence!r}')
             self.assertRegex(sentence, r'[.?]$', f'missing terminal punctuation at high depth for seed {seed}: {sentence!r}')
