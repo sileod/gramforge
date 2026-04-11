@@ -86,17 +86,12 @@ class TestDefaultPreprocessTemplate:
         assert default_preprocess_template('10') == '{10}'
         assert default_preprocess_template('10 11') == '{10} {11}'
 
-    def test_already_braced_digit_is_double_wrapped(self):
-        # '{0}' has no ← so the regex runs and matches the '0' inside the braces,
-        # yielding '{{0}}'. When .format() is applied, '{{0}}' renders to the
-        # *literal string* '{0}' — a footgun when mixing explicit {n} syntax with
-        # bare-digit templates.
-        result = default_preprocess_template('{0} text')
-        assert result == '{{0}} text', (
-            "Preprocessor re-wraps the digit inside '{}', producing '{{0}}' which "
-            "formats back to a literal '{0}' string. Use bare digits only (no curly "
-            "braces) unless the template contains ← to skip preprocessing."
-        )
+    def test_already_braced_digit_is_not_double_wrapped(self):
+        # Digits inside existing {n} braces must not be re-wrapped.
+        # The lookbehind/lookahead in the regex skip digits that are already
+        # enclosed in {}, so '{0} text 1' → '{0} text {1}' (only the bare 1 wrapped).
+        assert default_preprocess_template('{0} text 1') == '{0} text {1}'
+        assert default_preprocess_template('{0} {1}') == '{0} {1}'   # nothing to do
 
 
 # ── 2. Substitution ────────────────────────────────────────────────────────
@@ -136,23 +131,19 @@ class TestSubstitution:
         sub = Substitution('0 and 1')
         assert sub('alice', 'bob') == 'alice and bob'
 
-    def test_digits_in_rendered_content_crash_substitution(self):
-        """BUG: Substitution crashes when rendered content contains bare digits.
+    def test_digits_in_rendered_content_are_not_wrapped(self):
+        """Digits in a rendered arg must not become format placeholders.
 
-        wrap() converts ALL bare digits in the substituted text to {n} placeholders,
-        including digits from content strings such as predicate names.
-        A predicate 'pred5' gives 'pred5(X)' after substitution, but wrap() converts
-        that to 'pred{5}(X)'. The subsequent .format() call needs positional arg 5
-        but only 1 arg is present → IndexError.
-
-        The current FOL grammar avoids this by naming predicates preda–predj
-        (letters only), but the API offers no protection for arbitrary content.
-        This test fails while the bug is present; it will pass once fixed.
+        The fix wraps only the X part of N[?←X] (e.g. '1' → '{1}'), never
+        digits that already live in the rendered content of the substituted arg.
+        'pred5(?)' after substitution must stay 'pred5(X)', not 'pred{5}(X)'.
         """
         sub = Substitution('0[?←X]')
-        # Should produce 'pred5(X)' — the digit is part of the name, not a slot.
-        result = sub('pred5(?)')
-        assert result == 'pred5(X)'
+        assert sub('pred5(?)') == 'pred5(X)'
+
+        # Digit in replacement string (chaining): '0[?←1]' → X='1' → '{1}' → filled by arg1.
+        sub2 = Substitution('0[?←1]')
+        assert sub2('tall(?)', 'mary') == 'tall(mary)'
 
     def test_substitution_with_node_arg(self):
         stub = _Stub('tall(?)')
@@ -370,3 +361,43 @@ def test_fol_constraint_no_free_x_without_quantifier(fol_grammar, seed):
         assert re.search(r'[\?\!]\[.*X.*\]', tptp), (
             f"Free variable X with no binding quantifier (seed={seed}): {tptp!r}"
         )
+
+
+# ── 7. Depth target tests ──────────────────────────────────────────────────
+
+@pytest.mark.parametrize('seed', SEEDS)
+def test_fol_generated_height_within_depth_bounds(fol_grammar, seed):
+    """Generated trees must respect both min_depth and depth (max_depth)."""
+    sample = generate(fol_grammar.start(), depth=8, min_depth=5, seed=seed)
+    h = sample.height
+    assert h >= 5, f"height {h} < min_depth 5 (seed={seed}): {sample@'eng'!r}"
+    assert h <= 8, f"height {h} > depth 8 (seed={seed}): {sample@'eng'!r}"
+
+
+def test_generate_respects_depth_bounds_simple_grammar():
+    """min_depth and depth are respected on a small recursive grammar."""
+    R = init_grammar(['eng'])
+    R('s(s)', '0')   # recursive: s expands to s (increases depth)
+    R('s', 'x')      # terminal: s → 'x'
+
+    for seed in range(30):
+        result = generate(R.start(), depth=5, min_depth=3, seed=seed)
+        assert 3 <= result.height <= 5, (
+            f"height {result.height} not in [3, 5] (seed={seed})"
+        )
+
+
+def test_generate_with_only_max_depth_allows_any_height_up_to_max():
+    """Without min_depth, height 0..depth are all valid."""
+    R = init_grammar(['eng'])
+    R('s(s)', '0')
+    R('s', 'x')
+
+    heights = set()
+    for seed in range(50):
+        result = generate(R.start(), depth=4, seed=seed)
+        h = result.height
+        assert 0 <= h <= 4, f"height {h} > depth 4 (seed={seed})"
+        heights.add(h)
+    # With a purely recursive grammar across 50 seeds we should see variation
+    assert len(heights) > 1, "Expected height variation across seeds"
