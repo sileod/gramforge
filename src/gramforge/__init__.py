@@ -45,6 +45,3 @@ def gramforge_to_nltk(g, lang_index=0):
         prods.append(nltk.grammar.Production(lhs, rhs))
 
     return nltk.CFG(nltk.Nonterminal(g.start().name), prods)
-
-# Backward-compatible alias
-unigram_to_nltk = gramforge_to_nltk
