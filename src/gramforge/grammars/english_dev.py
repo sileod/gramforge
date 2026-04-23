@@ -1,4 +1,4 @@
-from gramforge import init_grammar
+from gramforge import init_grammar, Constraint
 
 def simple_english_grammar(cap=3, questions=True):
     R = init_grammar(['eng'], preprocess_template=lambda s: s)
@@ -23,8 +23,8 @@ def simple_english_grammar(cap=3, questions=True):
     R('decl(decl_simple, conj, decl_simple)', '{0}, {1} {2}', weight=0.2)
     R('discourse(decl)', '{0}')
     R('discourse(decl, conj, decl)', '{0}, {1} {2}', weight=0.1)
-    R('decl_simple(np_sg_subj, vp_sg)', '{0} {1}')
-    R('decl_simple(np_pl_subj, vp_pl)', '{0} {1}')
+    R('decl_simple(np_sg_subj, vp_sg)', '{0} {1}', constraint=Constraint("0∉1,1∉0"))
+    R('decl_simple(np_pl_subj, vp_pl)', '{0} {1}', constraint=Constraint("0∉1,1∉0"))
     R('conj', 'and'); R('conj', 'but'); R('conj', 'yet')
     
     # Existential 'There' (Fixed for a/an) — lower weight so they don't dominate
@@ -171,13 +171,15 @@ def simple_english_grammar(cap=3, questions=True):
     
     # Structure B: Prepositional Dative (V DO to IO) -> "Gives the book to Alice"
     # Note: DO here can be a pronoun ("Give it to Alice")
+    # Constraint 1∉3,3∉1 prevents "give Alice to Alice"
     R('to', 'to')
-    R('vp_sg(v_ditrans_sg, np_sg_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5)
-    R('vp_sg(v_ditrans_sg, np_pl_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5)
-    R('vp_pl(v_ditrans_base, np_sg_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5)
-    R('vp_pl(v_ditrans_base, np_pl_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5)
-    R('vp_lex_base(v_ditrans_base, np_sg_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5)
-    R('vp_lex_base(v_ditrans_base, np_pl_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5)
+    _c_do_io = Constraint("1∉3,3∉1")
+    R('vp_sg(v_ditrans_sg, np_sg_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5, constraint=_c_do_io)
+    R('vp_sg(v_ditrans_sg, np_pl_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5, constraint=_c_do_io)
+    R('vp_pl(v_ditrans_base, np_sg_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5, constraint=_c_do_io)
+    R('vp_pl(v_ditrans_base, np_pl_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5, constraint=_c_do_io)
+    R('vp_lex_base(v_ditrans_base, np_sg_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5, constraint=_c_do_io)
+    R('vp_lex_base(v_ditrans_base, np_pl_obj, to, np_io)', '{0} {1} {2} {3}', weight=0.5, constraint=_c_do_io)
 
     # 4. Copula
     R('vp_sg(is, adj)', '{0} {1}')
@@ -212,7 +214,8 @@ def simple_english_grammar(cap=3, questions=True):
 
     for base, sg in [('sleep', 'sleeps'), ('run', 'runs'), ('arrive', 'arrives'), ('exist', 'exists')]:
         R('v_intr_base', base); R('v_intr_sg', sg)
-    for base, sg in [('meet', 'meets'), ('help', 'helps'), ('find', 'finds'), ('love', 'loves')]:
+    for base, sg in [('meet', 'meets'), ('help', 'helps'), ('find', 'finds'), ('love', 'loves'),
+                     ('see', 'sees'), ('like', 'likes'), ('know', 'knows'), ('have', 'has')]:
         R('v_trans_base', base); R('v_trans_sg', sg)
     for base, sg in [('give','gives'), ('offer','offers'), ('send','sends')]:
         R('v_ditrans_base', base); R('v_ditrans_sg', sg)
