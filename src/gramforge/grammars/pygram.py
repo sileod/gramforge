@@ -22,8 +22,8 @@ from .. import Substitution, Constraint, generate, init_grammar
 def pygram_grammar(
     max_number=16,
     # --- feature flags --------------------
-    mode='program',               # 'program' = full script; 'function' = just defs
-    n_functions=1,
+    mode='function',               # 'program' = full script; 'function' = just defs
+    n_functions=2,
     main_signature=None,          # ((ptype, ...), ret_type) fixes f0 exactly;
                                   # None => f0 draws from param_types / return_types
     f0_is_root=None,              # None => True when mode='function', False otherwise.
@@ -38,7 +38,7 @@ def pygram_grammar(
     include_conditionals=True,    # if / else (body AND top level)
     allow_recursion=True,
     allow_cross_calls=True,
-    n_outer_inits=2,
+    n_outer_inits=0,
 ):
     R = init_grammar(['py'])
     chars = list("abcdefghijklmnopqrstuvwxyz")
