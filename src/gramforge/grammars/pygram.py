@@ -19,7 +19,7 @@ from .. import Substitution, Constraint, generate, init_grammar
 # ---------------------------------------------------------------------------
 
 
-def tinypy_grammar(
+def pygram_grammar(
     max_number=16,
     # --- feature flags --------------------
     mode='program',               # 'program' = full script; 'function' = just defs
