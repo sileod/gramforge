@@ -54,7 +54,7 @@ print(x@tptp)
 
 We feature pre-written grammars including:
 - `tinypy_grammar` reproducing the [tinypy](https://github.com/MarwaNair/TinyPy-Generator), a synthetic toy grammar of python for LLM training/evaluation
-- `pygram_garammar` ab advanced, state of the art python grammar, with valid functions, recursion, types, etc.
+- `pygram_grammar` ab advanced, state of the art python grammar, with valid functions, recursion, types, etc.
 - `FOL_grammar` a sophisticated controlled grammar for first order logic (tptp) aligned with simplified English
 - `simple_english_grammar` a subset of english
 - `arith_grammar` a simple grammar for arithmetics
