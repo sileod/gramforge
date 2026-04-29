@@ -1,9 +1,9 @@
-# gramforge - a DSL for grammar based data generation ⚒️
+# gramforge ⚒️
 
 `gramforge` is a pythonic library for random (depth first) generation with declarative context-sensitive grammars (but also context free grammars) for synthetic data creation.
 One particularity is the option to generate in multiple languages in parallel (for example, tptp and pseudo-english).
 
-Example with LogicNLI grammar:  
+Example with LogicNLI grammar with the gramforge DSL:  
 `pip install gramforge`  
 ```python
 from gramforge import init_grammar, generate
