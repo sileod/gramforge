@@ -21,7 +21,8 @@ SEEDS = range(30)
 DEPTH = 10
 SAFE_BUILTINS = {
     '__builtins__': {'print': lambda *a: None, 'range': range, 'len': len,
-                     'int': int, 'str': str, 'list': list, 'bool': bool}
+                     'int': int, 'str': str, 'list': list, 'bool': bool,
+                     'Exception': Exception}
 }
 EXEC_TIMEOUT = 2   # seconds per execution
 

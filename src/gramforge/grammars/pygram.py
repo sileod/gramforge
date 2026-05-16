@@ -1,29 +1,12 @@
 import random
 from .. import Substitution, Constraint, generate, init_grammar
 
-# ---------------------------------------------------------------------------
-# Design notes
-# ---------------------------------------------------------------------------
 # Types: 'int', 'str', 'list'. state['funcs'][name] = (arity, ret_t, param_types).
-# Typed call rules (CALL_INT / CALL_STR / CALL_LIST) filter the registry by
-# return type, falling back to a same-typed literal when no function matches.
-#
-# Factoring primitives:
-#   _assign(kind)     → render fn for ADV_ASSIGN_TYPE of the given type.
-#   _if_chain(*pairs) → renders an if/elif/else chain from (head,body) node pairs.
-#   _in_block(node)   → renders a body node inside a nest level (for safe-vars tracking).
-#   STMTS             → recursive nonterminal; depth-scales body length naturally.
-#   EXPRESSION(EXPRESSION, ARITH_OP, TERM) → recursive arithmetic depth scaling.
-#   COND_EXPR(EXPRESSION, REL_OP, EXPRESSION) → richer conditions at depth.
-#
-# Runnability knobs:
-#   safe_returns=True → return value is always a definitely-assigned variable
-#                       (params + top-level assigns, not loop/conditional body vars).
-#                       Prevents UnboundLocalError when functions are called.
-#   min_body_stmts=2  → ensures at least N statements in every function body.
-#   allow_recursion=False → eliminates infinite recursion.
-#   include_extra_ops=False → eliminates ZeroDivisionError from // and %.
-# ---------------------------------------------------------------------------
+# Typed call rules (CALL_INT/STR/LIST) filter by return type, fall back to a literal.
+# Safety pyramid: scope['vars'][t] (any assigned) ⊇ scope['safe_vars'][t] (definitely
+# assigned at nest_depth==0). safe_returns=True restricts returns/refs to safe_vars.
+# Depth scaling: STMTS / EXPRESSION are recursive — body length and arithmetic depth
+# grow with max_depth. include_* flags compose orthogonally.
 
 
 def pygram_grammar(
@@ -45,6 +28,10 @@ def pygram_grammar(
     # --- semantic quality ----------------------
     safe_returns=True,          # return only definitely-assigned vars (prevents UnboundLocalError)
     min_body_stmts=1,           # minimum statements in a function body (1 or 2)
+    failure_rate=0.5,           # 0=avoid runtime failures (asserts tautological, no recur-in-return,
+                                # no '//' '%'); 1=allow all risky variants. Multiplies with include_*.
+    triviality_rate=0.5,        # 0=reject bare-var/literal returns when richer options exist;
+                                # 1=accept any return form. Affects return-value selection only.
     # --- feature flags -------------------------
     include_print=True,
     include_loops=True,
@@ -56,6 +43,8 @@ def pygram_grammar(
     include_fstrings=True,            # f"label={x}"
     include_extra_ops=True,           # // and % (may cause ZeroDivisionError at runtime)
     include_swap=True,                # a, b = b, a
+    include_break_continue=True,      # break/continue inside loops
+    include_try_except=True,          # try/except blocks
 ):
     R = init_grammar(['py'])
     chars = list("abcdefghijklmnopqrstuvwxyz")
@@ -68,13 +57,11 @@ def pygram_grammar(
     if mode == 'function' and n_functions < 1:
         raise ValueError("mode='function' requires n_functions >= 1")
 
-    # -----------------------------------------------------------------------
-    # 1. Scope stack + type registry
-    # -----------------------------------------------------------------------
+    # === 1. Scope stack + type registry ===
     # nest_depth tracks how many conditional/loop blocks deep we are.
     # Variables assigned at nest_depth == 0 are "definitely assigned" (safe).
     state = {'scopes': [], 'loops': {}, 'funcs': {}, 'current_fn': None,
-             'nest_depth': 0}
+             'nest_depth': 0, 'loop_depth': 0}
     TYPES = ('int', 'str', 'list')
     _TYPE_LITERALS = {
         'int':  lambda: str(random.randint(0, max_number)),
@@ -101,14 +88,12 @@ def pygram_grammar(
     def reset_state(ctx_node):
         state.update({'scopes': [_new_scope()], 'loops': {}, 'funcs': {},
                       'current_fn': None, 'fn_plan': [], 'fn_plan_idx': 0,
-                      'nest_depth': 0})
+                      'nest_depth': 0, 'loop_depth': 0})
         if n_functions > 0:
             _make_plan()
         return ""
 
-    # -----------------------------------------------------------------------
-    # 2. Context-sensitive helpers
-    # -----------------------------------------------------------------------
+    # === 2. Context-sensitive helpers ===
     def concat(*args): return "".join(a.render('py') for a in args)
 
     def render_init(ctx_node):
@@ -134,47 +119,14 @@ def pygram_grammar(
         return f"{v} = {e}\n"
 
     def _loop_protected_vars():
-        """Return vars that must not be (re-)assigned in the current scope.
+        # While-loop var must not be re-assigned in its body (would break convergence).
+        v = state['loops'].get('var') if state['nest_depth'] > 0 else None
+        return {v} if v else set()
 
-        While-loop control variables are protected inside loop bodies to prevent
-        the body from modifying the counter in a way that breaks convergence
-        (e.g. x -= large_num inside while x < 14 would infinite-loop).
-        """
-        if state['nest_depth'] > 0:
-            v = state['loops'].get('var')
-            if v: return {v}
-        return set()
-
-    def get_var_of_type(t):
-        """Walk scope chain for `t`-typed assignment target; creates a new name if none.
-
-        Restricted to safe_vars at nest_depth==0 and excludes loop control vars.
-        Only call for assignment targets (VAR) — for expressions use get_expr_var.
-        """
-        use_safe = safe_returns and state['nest_depth'] == 0
-        excl = _loop_protected_vars()
-        for scope in reversed(state['scopes']):
-            raw = scope['safe_vars'][t] if use_safe else scope['vars'][t]
-            pool = raw - excl
-            if pool: return random.choice(list(pool))
-        for scope in reversed(state['scopes']):
-            pool = scope['vars'][t] - excl
-            if pool: return random.choice(list(pool))
-        # Last resort: invent a fresh name for a new assignment target.
-        outer = state['scopes'][0]
-        v = next((c for c in chars if c not in outer['assigned'] and c not in excl), None)
-        if v is None:
-            v = next((c for c in chars if c not in excl), random.choice(chars))
-        outer['assigned'][v] = '0'
-        # Do NOT add to vars/safe_vars here; render_assign will do that properly.
-        return v
-
-    def get_expr_var(t='int'):
-        """Return an existing `t`-typed variable for expression contexts.
-
-        Falls back to a literal instead of creating phantom variables that would
-        cause UnboundLocalError (e.g. when loop control var is the only var).
-        """
+    def _pick_var(t, *, create=False):
+        # Walk scope chain for a `t`-typed var. `create=True` fabricates a fresh
+        # name for an assignment target; `create=False` falls back to a literal
+        # (for expression contexts — avoids phantom vars → UnboundLocalError).
         use_safe = safe_returns and state['nest_depth'] == 0
         excl = _loop_protected_vars()
         for scope in reversed(state['scopes']):
@@ -184,24 +136,29 @@ def pygram_grammar(
             for scope in reversed(state['scopes']):
                 pool = scope['vars'][t] - excl
                 if pool: return random.choice(list(pool))
-        return _TYPE_LITERALS[t]()
+        if not create: return _TYPE_LITERALS[t]()
+        outer = state['scopes'][0]
+        v = (next((c for c in chars if c not in outer['assigned'] and c not in excl), None)
+             or next((c for c in chars if c not in excl), random.choice(chars)))
+        outer['assigned'][v] = '0'   # name reserved; render_assign registers the var
+        return v
 
-    def get_assigned_var(ctx): return get_expr_var('int')
+    def get_var_of_type(t):    return _pick_var(t, create=True)   # assignment target
+    def get_expr_var(t='int'): return _pick_var(t)                # expression context
+    def get_assigned_var(ctx): return _pick_var('int')
     def get_atom(ctx):
         if cur()['assigned'] and random.random() < 0.7:
-            return get_expr_var('int')
+            return _pick_var('int')
         return str(random.randint(0, max_number))
     def get_last_var(ctx):
         top = cur()
-        use_safe = safe_returns and state['nest_depth'] == 0
-        if top['last'] and not use_safe:
+        if top['last'] and not (safe_returns and state['nest_depth'] == 0):
             return next(iter(top['last']))
-        # At top level with safe_returns, restrict to definitely-assigned vars.
         for scope in reversed(state['scopes']):
             for t in TYPES:
                 pool = scope['safe_vars'][t] - _loop_protected_vars()
                 if pool: return random.choice(list(pool))
-        return get_expr_var('int')
+        return _pick_var('int')
 
     def render_loop_math(ctx_node, mode):
         if mode == 'init':
@@ -242,23 +199,16 @@ def pygram_grammar(
         v, s = state['loops'].get('var', 'i'), state['loops'].get('step', '1')
         return f"{v} = {v} {op} {s}"
 
-    def _safe_int_pool():
-        """Current scope's int vars, restricted to safe_vars at top level."""
-        scope = cur()
-        if safe_returns and state['nest_depth'] == 0:
-            return scope['safe_vars']['int']
-        return scope['vars']['int']
-
     def render_cond_expr(v1_node, op_node, v2_node):
         lhs, op, rhs = v1_node.render('py'), op_node.render('py'), v2_node.render('py')
         if lhs == rhs and random.random() < 0.8:
-            alts = [c for c in _safe_int_pool() if c != lhs]
+            scope = cur()
+            pool = scope['safe_vars']['int'] if (safe_returns and state['nest_depth'] == 0) else scope['vars']['int']
+            alts = [c for c in pool if c != lhs]
             if alts: rhs = random.choice(alts)
         return f"{lhs} {op} {rhs}"
 
-    # -----------------------------------------------------------------------
-    # 3. Structural helpers
-    # -----------------------------------------------------------------------
+    # === 3. Structural helpers ===
     def _indent_block(text, prefix='    '):
         out = []
         for line in text.split('\n'):
@@ -266,38 +216,37 @@ def pygram_grammar(
             out.append(prefix + line.replace('\t', '    '))
         return '\n'.join(out)
 
-    def _in_block(node):
-        """Render a body node one nest level deeper (tracks safe-var assignments)."""
+    def _in_block(node, is_loop=False):  # render inside one nest level
         state['nest_depth'] += 1
+        if is_loop: state['loop_depth'] += 1
         text = node.render('py')
         state['nest_depth'] -= 1
+        if is_loop: state['loop_depth'] -= 1
         return text
 
-    def _if_chain(*pairs):
-        """Render an if/elif/else chain from (head_node, body_node) pairs."""
-        return ''.join(
-            f"{h.render('py')}{_indent_block(_in_block(b))}\n"
-            for h, b in pairs
-        )
+    def _if_chain(*pairs):  # (head_node, body_node) pairs → if/elif/else chain
+        return ''.join(f"{h.render('py')}{_indent_block(_in_block(b))}\n" for h, b in pairs)
 
     def _assign(kind='int'):
-        """Return a render function for an assignment of the given type."""
         return render_assign if kind == 'int' else lambda v, e: render_assign(v, e, kind=kind)
 
-    # -----------------------------------------------------------------------
-    # 4. Typed calls
-    # -----------------------------------------------------------------------
+    # === 4. Typed calls ===
     def _fn_index(name):
         return int(name[1:]) if name and name.startswith('f') else -1
 
     def _callable_functions(ret_type):
+        # Self-recursion outside a conditional/loop body is gated by failure_rate
+        # (unguarded self-calls almost always RecursionError; inside nest_depth>0
+        # there's at least a chance the path is taken conditionally).
         candidates = []
         current = state['current_fn']
         current_idx = _fn_index(current)
+        unguarded_self = state['nest_depth'] == 0
         for fname, (arity, rt, ptypes) in state['funcs'].items():
             if rt != ret_type: continue
             is_self = (fname == current)
             if is_self and not allow_recursion: continue
+            if is_self and unguarded_self and random.random() >= failure_rate: continue
             if (not is_self) and current is not None and not allow_cross_calls: continue
             if f0_is_root and current is not None and _fn_index(fname) < current_idx: continue
             candidates.append((fname, ptypes))
@@ -326,9 +275,7 @@ def pygram_grammar(
     render_call_str  = lambda ctx: _render_call_of_type('str')
     render_call_list = lambda ctx: _render_call_of_type('list')
 
-    # -----------------------------------------------------------------------
-    # 5. Function defs
-    # -----------------------------------------------------------------------
+    # === 5. Function defs ===
     def _pick_param_types(n):
         return [random.choice(list(param_types)) for _ in range(n)]
 
@@ -349,6 +296,44 @@ def pygram_grammar(
         state['fn_plan'] = plan
         state['fn_plan_idx'] = 0
 
+    _DEFAULT_RET = {'int': '0', 'str': '""', 'list': '[]'}
+    def _pick_return_value(ret_t):
+        # Tier 1: call/arith/ternary forms (only when safe_pool has ≥2 ints).
+        # Self-recursion in return is gated by failure_rate: it usually leads to
+        # RecursionError unless the body has a base case (which CFG can't enforce).
+        top = cur()
+        safe_pool = top['safe_vars'][ret_t]
+        recur_ok = allow_recursion and random.random() < failure_rate
+        r = random.random()
+        if (r < 0.25 and recur_ok) or (r < 0.25 and allow_cross_calls):
+            return _render_call_of_type(ret_t)
+        if ret_t == 'int' and len(safe_pool) >= 2:
+            if r < 0.40:
+                a, b = random.sample(list(safe_pool), 2)
+                return f"{a} {random.choice(['+', '-', '*'])} {b}"
+            if r < 0.50 and include_ternary:
+                a, b = random.sample(list(safe_pool), 2)
+                cv = random.choice(list(safe_pool))
+                return f"{a} if {cv} {random.choice(['<', '>', '==', '!='])} {random.randint(0, max_number)} else {b}"
+        # Tier 2: pick a safe variable, then params-only, then literal.
+        pool = safe_pool if safe_returns else top['vars'][ret_t]
+        # triviality_rate: when low, avoid bare param/var/literal returns by
+        # synthesizing a compound expression (arith with another var, or arith
+        # with a literal when only one var is available).
+        if pool and ret_t == 'int' and random.random() > triviality_rate:
+            if len(pool) >= 2:
+                a, b = random.sample(list(pool), 2)
+                return f"{a} {random.choice(['+', '-', '*'])} {b}"
+            a = next(iter(pool))
+            return f"{a} {random.choice(['+', '-', '*'])} {random.randint(1, max_number)}"
+        if top['last'] and (last := [v for v in top['last'] if v in pool]):
+            return last[0]
+        if pool:
+            return random.choice(list(pool))
+        if safe_returns and (param_pool := top['vars'][ret_t] & top['params']):
+            return random.choice(list(param_pool))
+        return _DEFAULT_RET[ret_t]
+
     def render_func_def(body_node):
         idx = state['fn_plan_idx']
         state['fn_plan_idx'] = idx + 1
@@ -366,39 +351,7 @@ def pygram_grammar(
         push_scope(params=params, p_types=ptypes)
         body_text = body_node.render('py')
 
-        top = cur()
-        type_pool = top['vars'][ret_t]
-        # safe_pool: params + variables definitely assigned (not inside a branch)
-        safe_pool = top['safe_vars'][ret_t]
-
-        r = random.random()
-        if r < 0.25 and allow_recursion or (r < 0.25 and allow_cross_calls):
-            ret_v = _render_call_of_type(ret_t)
-        elif r < 0.40 and ret_t == 'int' and len(safe_pool) >= 2:
-            a, b = random.sample(list(safe_pool), 2)
-            ret_v = f"{a} {random.choice(['+', '-', '*'])} {b}"
-        elif r < 0.50 and ret_t == 'int' and len(safe_pool) >= 2 and include_ternary:
-            a, b = random.sample(list(safe_pool), 2)
-            cv = random.choice(list(safe_pool))
-            ret_v = f"{a} if {cv} {random.choice(['<', '>', '==', '!='])} {random.randint(0, max_number)} else {b}"
-        elif safe_returns:
-            # Use safe_pool — falls back to params-only then literals if empty
-            if top['last'] and (sl := [v for v in top['last'] if v in safe_pool]):
-                ret_v = sl[0]
-            elif safe_pool:
-                ret_v = random.choice(list(safe_pool))
-            elif (param_pool := type_pool & top['params']):
-                ret_v = random.choice(list(param_pool))  # params always defined
-            else:
-                ret_v = {'int': '0', 'str': '""', 'list': '[]'}[ret_t]
-        else:
-            if top['last'] and (lt := [v for v in top['last'] if v in type_pool]):
-                ret_v = lt[0]
-            elif type_pool:
-                ret_v = random.choice(list(type_pool))
-            else:
-                ret_v = {'int': '0', 'str': '""', 'list': '[]'}[ret_t]
-
+        ret_v = _pick_return_value(ret_t)
         pop_scope()
         state['current_fn'] = prev_fn
         state['nest_depth']  = prev_nest
@@ -413,9 +366,7 @@ def pygram_grammar(
         tail = f"\n    return {ret_v}" if returns else ("" if indented else "\n    pass")
         return f"{header}\n{indented}{tail}\n"
 
-    # -----------------------------------------------------------------------
-    # 6. Grammar
-    # -----------------------------------------------------------------------
+    # === 6. Grammar ===
     R('CTX', '')
     R('RESET(CTX)', reset_state)
 
@@ -606,7 +557,7 @@ def pygram_grammar(
     R('FOR_HEAD(VAR, FOR_INIT, FOR_FINAL, STEP)', 'for 0 in range(1, 2, 3):')
     R('FOR_HEAD(VAR, FOR_INIT, FOR_FINAL)',       'for 0 in range(1, 2):')
     R('FOR_LOOP(FOR_HEAD, BODY_STMT)',
-      lambda h, b: f"{h.render('py')}\n{_indent_block(_in_block(b))}\n")
+      lambda h, b: f"{h.render('py')}\n{_indent_block(_in_block(b, is_loop=True))}\n")
 
     R('REL_LESS', '<');    R('REL_LESS', '<=')
     R('REL_GREATER', '>'); R('REL_GREATER', '>=')
@@ -621,23 +572,24 @@ def pygram_grammar(
         op_s   = op.render('py')
         fin_s  = f.render('py')
         saved  = dict(state['loops'])
-        body_s = _indent_block(_in_block(b))
+        body_s = _indent_block(_in_block(b, is_loop=True))
         state['loops'].clear(); state['loops'].update(saved)
         upd_s  = u.render('py')
         return f"{init_s}while {var_s} {op_s} {fin_s}:\n{body_s}\n    {upd_s}\n"
     R('WH_L(WHILE_VAR, REL_LESS,    WH_FINAL_L, BODY_STMT, WH_UPD_L)', _render_while)
     R('WH_G(WHILE_VAR, REL_GREATER, WH_FINAL_G, BODY_STMT, WH_UPD_G)', _render_while)
 
-    # -----------------------------------------------------------------------
-    # 7. BODY_STMT — flag-gated
-    # -----------------------------------------------------------------------
+    # === 7. BODY_STMT — flag-gated ===
     R('BODY_STMT(SIMPLE_ASSIGN)',   '0')
     R('BODY_STMT(ADV_ASSIGN_TYPE)', '0')
     if include_augmented_assigns: R('BODY_STMT(AUG_ASSIGN)', '0', weight=0.7)
     if include_swap:              R('BODY_STMT(SWAP_STMT)',  '0', weight=0.2)
     if include_assert:
+        _TAUTOLOGIES = ['True', '1 == 1', '0 < 1', 'len("hi") == 2', 'len("go") == 2',
+                        '"hi" == "hi"', '2 + 2 == 4', '[0, 1, 2][0] == 0']
         def render_assert(cond_node):
-            return f"assert {cond_node.render('py')}\n"
+            cond = cond_node.render('py') if random.random() < failure_rate else random.choice(_TAUTOLOGIES)
+            return f"assert {cond}\n"
         R('ASSERT_STMT(COND_EXPR)', render_assert)
         R('BODY_STMT(ASSERT_STMT)', '0', weight=0.3)
     if include_print:      R('BODY_STMT(DISPLAY)',  '0')
@@ -646,6 +598,17 @@ def pygram_grammar(
         R('BODY_STMT(WH_L)',     '0', weight=0.3)
         R('BODY_STMT(WH_G)',     '0', weight=0.3)
     if include_conditionals: R('BODY_STMT(IF_STMT)', '0', weight=0.5)
+    if include_break_continue:
+        # break/continue render to 'pass' outside a loop body (avoids SyntaxError).
+        R('LOOP_CTL_STMT(CTX)',
+          lambda x: (random.choice(['break', 'continue']) if state['loop_depth'] > 0 else 'pass') + '\n')
+        R('BODY_STMT(LOOP_CTL_STMT)', '0', weight=0.2)
+    if include_try_except:
+        # try: <body> except Exception: <handler>. _in_block tracks nest_depth so
+        # vars assigned inside try/except don't enter safe_vars (may be skipped).
+        R('TRY_STMT(BODY_STMT, BODY_STMT)',
+          lambda b, h: f"try:\n{_indent_block(_in_block(b))}\nexcept Exception:\n{_indent_block(_in_block(h))}\n")
+        R('BODY_STMT(TRY_STMT)', '0', weight=0.25)
 
     # STMTS: recursive nonterminal — depth-scales body length naturally.
     # _norm() ensures every statement ends with exactly one newline.
@@ -659,9 +622,7 @@ def pygram_grammar(
           lambda a, b: _norm(a.render('py')) + _norm(b.render('py')))
     R('FUNC_DEF(STMTS)', render_func_def)
 
-    # -----------------------------------------------------------------------
-    # 8. TOP_STMT / FINAL_STMT — flag-gated
-    # -----------------------------------------------------------------------
+    # === 8. TOP_STMT / FINAL_STMT — flag-gated ===
     _stmt_end = lambda c: c.render('py').rstrip('\n') + '\n'
     R('TOP_ASSIGNS(ADV_ASSIGNS)', _stmt_end)
     R('TOP_DISP(ADV_DISP)',       _stmt_end)
@@ -697,9 +658,7 @@ def pygram_grammar(
     else:
         R('FINAL_STMT(TOP_EXPR)', '0')
 
-    # -----------------------------------------------------------------------
-    # 9. Entry point
-    # -----------------------------------------------------------------------
+    # === 9. Entry point ===
     if mode == 'function':
         prog_args = ['FUNC_DEF'] * max(1, n_functions)
     else:
