@@ -1,13 +1,36 @@
+"""pygram — procedural Python generator for LLM training data.
+
+Purpose: synthesize many small Python programs (functions, classes, instance
+use) with knobs to *steer* their properties:
+
+  - **correctness** (runnable / not, via failure_rate)
+  - **complexity** (depth, loop nesting, body length, via max_depth + STMTS)
+  - **non-triviality** (compound returns, no bare identity, via triviality_rate
+    and usage_bias that bias against trivial uses of names)
+
+Designed for downstream tasks that need such programs as input:
+  - **runnability classification** (predict if code raises)
+  - **execution prediction** (predict the captured `_result`)
+  - **complexity estimation** (predict step count / nesting)
+  - **refactoring / simplification** (rewrite preserving `_result`)
+  - **output-prediction MCQ / OpenQA** etc.
+
+A companion runtime-aware analyzer is in `gramforge.python_code_metrics`
+(static + execution metrics, identity check, subprocess sandbox).
+
+Implementation notes
+====================
+Types: 'int', 'str', 'list'. State (S) holds a scope stack, a defs registry
+(S.defs[name] = {'kind':'function', 'arity':n, 'ret_t':T, 'ptypes':[…]}),
+and nest/loop depth counters. Each scope has `all[t]` (any-assigned) ⊇
+`safe[t]` (definitely-assigned at nest_depth==0). safe_returns=True
+restricts refs/returns to `safe`. STMTS / EXPRESSION are recursive →
+depth scales body length and arithmetic depth.
+"""
+
 import random
 from .. import Substitution, Constraint, generate, init_grammar
 from ..codegen_utils import CodeState, Scope, pick_var, gated, render_block
-
-# Types: 'int', 'str', 'list'. State (S) holds a scope stack, a defs registry
-# (S.defs[name] = {'kind':'function', 'arity':n, 'ret_t':T, 'ptypes':[…]}),
-# and nest/loop depth counters. Each scope has `all[t]` (any-assigned) ⊇
-# `safe[t]` (definitely-assigned at nest_depth==0). safe_returns=True
-# restricts refs/returns to `safe`. STMTS / EXPRESSION are recursive →
-# depth scales body length and arithmetic depth.
 
 
 def pygram_grammar(
@@ -751,9 +774,11 @@ def pygram_grammar(
         return f"f0({', '.join(_arg_of_type(t) for t in spec['ptypes'])})"
     R('MAIN_CALL(CTX)', render_main_call)
     if n_functions > 0:
+        # Bind the result to `_result` so downstream metric tools can capture it
+        # (matches the convention used by reasoning-core's add_entry_call).
         R('FINAL_STMT(MAIN_CALL)',
-          (lambda c: f"print({c.render('py')})\n") if include_print
-          else (lambda c: f"{c.render('py')}\n"))
+          (lambda c: f"_result = {c.render('py')}\nprint(_result)\n") if include_print
+          else (lambda c: f"_result = {c.render('py')}\n"))
     elif include_print:
         R('FINAL_STMT(TOP_DISP)', '0')
     else:
@@ -763,7 +788,12 @@ def pygram_grammar(
     if mode == 'function':
         prog_args = ['FUNC_DEF'] * max(1, n_functions)
         if include_classes and n_classes > 0:
+            # INSTANCE_USE already exercises the program at runtime via
+            # `print(obj.method(…))`. Adding a separate f0 call with literal
+            # args here regresses runnability for marginal capture benefit.
             prog_args = prog_args + ['CLASS_DEF'] * n_classes + ['INSTANCE_USE']
+        elif n_functions > 0:   # function-only mode: bind `_result = f0(args)` for capture
+            prog_args.append('FINAL_STMT')
     else:
         needs_fb = n_functions > 0 and 'int' not in param_types
         eff_inits = max(n_outer_inits, 2 if needs_fb else n_outer_inits)
