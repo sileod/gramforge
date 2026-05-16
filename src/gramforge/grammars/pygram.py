@@ -31,6 +31,8 @@ def pygram_grammar(
     min_body_stmts=1,
     failure_rate=0.5,           # 0=safe (tautological asserts, no unguarded self-rec); 1=anything
     triviality_rate=0.5,        # 0=force compound returns; 1=allow bare-var/literal returns
+    usage_bias=0.6,             # 0=uniform name picks; 1=strongly prefer never-used names
+                                # (down-weights already-referenced defs/vars in selection)
     # --- feature flags -------------------------
     include_print=True,
     include_loops=True,
@@ -71,10 +73,22 @@ def pygram_grammar(
         S.reset()
         S.scopes.append(Scope(kind='module'))
         S.aux.update({'fn_plan': [], 'fn_plan_idx': 0, 'current_fn': None, 'loops': {},
-                      'class_plan': [], 'class_idx': 0, 'method_plan': [], 'method_idx': 0})
+                      'class_plan': [], 'class_idx': 0, 'method_plan': [], 'method_idx': 0,
+                      'use_counts': {}})
         if n_functions > 0: _make_plan()
         if include_classes and n_classes > 0: _make_class_plan()
         return ""
+
+    def _bump_use(name):
+        S.aux['use_counts'][name] = S.aux['use_counts'].get(name, 0) + 1
+
+    def _biased_pick(names):
+        """Pick from `names` with weight inversely proportional to prior uses.
+        usage_bias=0 → uniform; usage_bias=1 → strongly prefer never-used names."""
+        if not names: return None
+        if usage_bias <= 0: return random.choice(names)
+        weights = [1.0 / (1.0 + S.aux['use_counts'].get(n, 0) * usage_bias * 4) for n in names]
+        return random.choices(names, weights=weights, k=1)[0]
 
     # === 2. Var/name primitives ===
     def loop_excl():     # protect current while-loop counter from re-assignment in body
@@ -191,7 +205,9 @@ def pygram_grammar(
     def _render_call_of_type(ret_t):
         cands = _callable_functions(ret_t)
         if cands:
-            name, ptypes = random.choice(cands)
+            name = _biased_pick([c[0] for c in cands])
+            ptypes = dict(cands)[name]
+            _bump_use(name)
             return f"{name}({', '.join(_arg_of_type(t) for t in ptypes)})"
         return LITERALS[ret_t]()
 
@@ -354,18 +370,26 @@ def pygram_grammar(
         return f"class {cname}:\n{_indent(init_def + methods_text)}\n"
 
     def render_instance_use(ctx):
+        """Emit one instantiate+method-call block per defined class.
+
+        Bias picks each class's least-used method so the output exercises
+        the class surface area rather than calling m0 on everything."""
         classes = [(n, s) for n, s in S.defs.items() if s.get('kind') == 'class']
-        if not classes: return ""
-        cname, spec = random.choice(classes)
-        init_args = ', '.join(_arg_of_type(t) for t in spec['attrs'].values())
-        method = random.choice(spec['methods'])
-        margs = ', '.join(_arg_of_type(t) for t in method['ptypes'])
-        used = set().union(*S.scope.all.values()) | set(init_vals())
-        var = next((c for c in chars if c not in used), 'c')
-        S.scope.all[f'instance:{cname}'].add(var)
-        init_vals()[var] = f"{cname}(...)"
-        call = f"{var}.{method['name']}({margs})"
-        return f"{var} = {cname}({init_args})\nprint({call})\n"
+        lines = []
+        for cname, spec in classes:
+            if not spec.get('methods'): continue
+            init_args = ', '.join(_arg_of_type(t) for t in spec['attrs'].values())
+            mname = _biased_pick([m['name'] for m in spec['methods']])
+            method = next(m for m in spec['methods'] if m['name'] == mname)
+            margs = ', '.join(_arg_of_type(t) for t in method['ptypes'])
+            used = set().union(*S.scope.all.values()) | set(init_vals())
+            var = next((c for c in chars if c not in used), 'c')
+            S.scope.all[f'instance:{cname}'].add(var)
+            init_vals()[var] = f"{cname}(...)"
+            _bump_use(cname); _bump_use(mname)
+            lines.append(f"{var} = {cname}({init_args})")
+            lines.append(f"print({var}.{mname}({margs}))")
+        return '\n'.join(lines) + ('\n' if lines else '')
 
     # ============ 7. Grammar rules ============
     R('CTX', '')
