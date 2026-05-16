@@ -22,7 +22,9 @@ DEPTH = 10
 SAFE_BUILTINS = {
     '__builtins__': {'print': lambda *a: None, 'range': range, 'len': len,
                      'int': int, 'str': str, 'list': list, 'bool': bool,
-                     'Exception': Exception}
+                     'Exception': Exception,
+                     '__build_class__': __build_class__,
+                     '__name__': '__main__'}
 }
 EXEC_TIMEOUT = 2   # seconds per execution
 
@@ -33,7 +35,8 @@ def _timeout_handler(sig, frame):
 
 def _run_seed(kw, seed):
     """Return (ok, err_type, code) for a single seed."""
-    g = pygram_grammar(n_functions=2, **kw)
+    kw = {'n_functions': 2, **kw}   # default; caller can override
+    g = pygram_grammar(**kw)
     code = generate(g, seed=seed, max_depth=DEPTH) @ 'py'
     try:
         ast.parse(code)
@@ -220,6 +223,31 @@ class PygramVarietyTest(unittest.TestCase):
             self.assertNotIn('for ', code, f"for appeared despite include_loops=False")
             self.assertNotIn('if ', code, f"if appeared despite include_conditionals=False")
             self.assertNotIn('assert ', code, f"assert appeared despite include_assert=False")
+
+
+class PygramClassesTest(unittest.TestCase):
+    """include_classes=True generates class defs + instance use; self.X resolves."""
+
+    def test_classes_parse_and_run(self):
+        for seed in SEEDS:
+            kw = dict(n_functions=1, include_classes=True, n_classes=1,
+                      failure_rate=0.0, triviality_rate=0.3)
+            result, msg, code = _run_seed(kw, seed)
+            self.assertNotIn(result, {'syntax', 'infinite_loop'},
+                f"Bad class generation seed={seed}: {result}\n{code}\n{msg}")
+            self.assertIn('class ', code, f"No class produced seed={seed}")
+            self.assertIn('self.', code, f"No self.attr usage seed={seed}")
+
+    def test_class_runnability_failure_rate_zero(self):
+        """At failure_rate=0, class output should be >= 90% runnable."""
+        oks = 0
+        for seed in SEEDS:
+            kw = dict(n_functions=1, include_classes=True, n_classes=1,
+                      failure_rate=0.0, triviality_rate=0.3)
+            result, _, _ = _run_seed(kw, seed)
+            if result == 'ok': oks += 1
+        self.assertGreaterEqual(oks / len(SEEDS), 0.90,
+            f"Only {oks}/{len(SEEDS)} class samples runnable at failure_rate=0")
 
 
 if __name__ == '__main__':

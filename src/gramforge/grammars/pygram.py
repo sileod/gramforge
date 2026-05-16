@@ -44,6 +44,8 @@ def pygram_grammar(
     include_swap=True,
     include_break_continue=True,
     include_try_except=True,
+    include_classes=False,            # generate class definitions + instance usage
+    n_classes=1,                      # only used when include_classes=True
 ):
     R = init_grammar(['py'])
     chars = list("abcdefghijklmnopqrstuvwxyz")
@@ -68,8 +70,10 @@ def pygram_grammar(
     def reset_state(ctx):
         S.reset()
         S.scopes.append(Scope(kind='module'))
-        S.aux.update({'fn_plan': [], 'fn_plan_idx': 0, 'current_fn': None, 'loops': {}})
+        S.aux.update({'fn_plan': [], 'fn_plan_idx': 0, 'current_fn': None, 'loops': {},
+                      'class_plan': [], 'class_idx': 0, 'method_plan': [], 'method_idx': 0})
         if n_functions > 0: _make_plan()
+        if include_classes and n_classes > 0: _make_class_plan()
         return ""
 
     # === 2. Var/name primitives ===
@@ -222,6 +226,10 @@ def pygram_grammar(
     def _pick_return_value(ret_t):
         top = S.scope
         safe_pool = top.safe[ret_t]
+        # Inside a method, treat enclosing class attrs as additional safe values.
+        cls = next((s for s in reversed(S.scopes) if s.kind == 'class'), None) if include_classes else None
+        if cls and ret_t == 'int':
+            safe_pool = safe_pool | {f"self.{a}" for a, t in cls.meta.get('attrs', {}).items() if t == ret_t}
         recur_ok = allow_recursion and gated(failure_rate)
         r = random.random()
         if (r < 0.25 and recur_ok) or (r < 0.25 and allow_cross_calls):
@@ -272,6 +280,93 @@ def pygram_grammar(
         tail = f"\n    return {ret_v}" if returns else ("" if body_text.strip() else "\n    pass")
         return f"{header}\n{_indent(body_text)}{tail}\n"
 
+    # === 6b. Class defs (V0) ===
+    # Convention: __init__ is auto-emitted (assigns 1-2 attrs); the grammar tree
+    # only spans the non-init methods. `self.X` references resolve via the
+    # enclosing class scope's meta['attrs']; outside a class, SELF_ATTR falls
+    # back to a literal so the rule is safe to include in TERM globally.
+    _ATTR_POOL = ['a', 'b', 'x', 'y', 'value', 'count']
+
+    def _make_class_plan():
+        plan = []
+        for i in range(n_classes):
+            cname = f"C{i}"
+            attrs = {a: 'int' for a in random.sample(_ATTR_POOL, random.randint(1, 2))}
+            methods = []
+            for j in range(random.randint(1, 2)):
+                n = random.randint(0, 1)
+                methods.append({'name': f"m{j}",
+                                'params': [random.choice([c for c in chars if c not in attrs])] if n else [],
+                                'ptypes': ['int'] * n, 'ret_t': 'int'})
+            plan.append({'name': cname, 'attrs': attrs, 'methods': methods})
+            S.define(cname, 'class', attrs=attrs, methods=methods)
+        S.aux['class_plan'] = plan
+        S.aux['class_idx'] = 0
+
+    def _class_scope():
+        return next((s for s in reversed(S.scopes) if s.kind == 'class'), None)
+
+    def render_self_attr(ctx):
+        cls = _class_scope()
+        if cls and cls.meta.get('attrs'):
+            return f"self.{random.choice(list(cls.meta['attrs']))}"
+        return LITERALS['int']()
+
+    def render_method_def(body_node):
+        idx = S.aux['method_idx']; S.aux['method_idx'] = idx + 1
+        plan = S.aux['method_plan']
+        if idx >= len(plan):  # grammar produced more methods than planned — extend
+            n = random.randint(0, 1)
+            plan.append({'name': f"m{idx}", 'params': ['p'] if n else [],
+                         'ptypes': ['int'] * n, 'ret_t': 'int'})
+        spec = plan[idx]
+        mname, params, ptypes, ret_t = spec['name'], spec['params'], spec['ptypes'], spec['ret_t']
+
+        prev_fn = S.aux.get('current_fn')
+        S.aux['current_fn'] = mname
+        with S.push_scope(kind='function', name=mname, params=params, ptypes=ptypes):
+            body_text = body_node.render('py')
+            ret_v = _pick_return_value(ret_t)
+        S.aux['current_fn'] = prev_fn
+
+        sig = ', '.join(['self'] + [f"{p}: {t}" for p, t in zip(params, ptypes)])
+        header = f"def {mname}({sig}) -> {ret_t}:" if type_hints else f"def {mname}({sig}):"
+        return f"{header}\n{_indent(body_text)}\n    return {ret_v}\n"
+
+    def render_class_def(body_node):
+        cidx = S.aux['class_idx']; S.aux['class_idx'] = cidx + 1
+        spec = S.aux['class_plan'][cidx]
+        cname, attrs = spec['name'], spec['attrs']
+
+        # Plan can be extended by render_method_def (recursive METHODS); after
+        # rendering we know exactly how many landed — prune `spec['methods']`
+        # to that set so `render_instance_use` can't pick a non-existent name.
+        S.aux['method_plan'] = list(spec['methods'])
+        S.aux['method_idx']  = 0
+        with S.push_scope(kind='class', name=cname, meta={'attrs': attrs}):
+            methods_text = body_node.render('py')
+        spec['methods'] = S.aux['method_plan'][:S.aux['method_idx']]
+        S.defs[cname]['methods'] = spec['methods']
+
+        init_sig  = ', '.join(['self'] + [f"{p}: {t}" for p, t in attrs.items()])
+        init_body = '\n'.join(f"    self.{p} = {p}" for p in attrs)
+        init_def  = f"def __init__({init_sig}):\n{init_body}\n"
+        return f"class {cname}:\n{_indent(init_def + methods_text)}\n"
+
+    def render_instance_use(ctx):
+        classes = [(n, s) for n, s in S.defs.items() if s.get('kind') == 'class']
+        if not classes: return ""
+        cname, spec = random.choice(classes)
+        init_args = ', '.join(_arg_of_type(t) for t in spec['attrs'].values())
+        method = random.choice(spec['methods'])
+        margs = ', '.join(_arg_of_type(t) for t in method['ptypes'])
+        used = set().union(*S.scope.all.values()) | set(init_vals())
+        var = next((c for c in chars if c not in used), 'c')
+        S.scope.all[f'instance:{cname}'].add(var)
+        init_vals()[var] = f"{cname}(...)"
+        call = f"{var}.{method['name']}({margs})"
+        return f"{var} = {cname}({init_args})\nprint({call})\n"
+
     # ============ 7. Grammar rules ============
     R('CTX', '')
     R('RESET(CTX)', reset_state)
@@ -298,6 +393,12 @@ def pygram_grammar(
     R('ATOM(BOOL_LIT)', '0', weight=0.15)
     R('TERM(EXPR_ID)', '0'); R('TERM(DIGIT)', '0'); R('TERM(ATOM)', '0')
     R('TERM(CALL_INT)', '0', weight=0.6)
+    if include_classes:
+        # SELF_ATTR resolves to `self.<attr>` inside a class method; a literal
+        # otherwise (so the rule is safe to include in TERM/EXPR_ID globally).
+        R('SELF_ATTR(CTX)', render_self_attr)
+        R('TERM(SELF_ATTR)',    '0', weight=0.8)
+        R('EXPR_ID(SELF_ATTR)', '0', weight=0.6)
     R('EXPRESSION(TERM, ARITH_OP, TERM)',       '0 1 2')
     R('EXPRESSION(TERM)',                        '0', weight=0.35)
     R('EXPRESSION(EXPRESSION, ARITH_OP, TERM)', '(0) 1 2', weight=0.3)
@@ -502,6 +603,13 @@ def pygram_grammar(
           lambda a, b: _norm(a.render('py')) + _norm(b.render('py')))
     R('FUNC_DEF(STMTS)', render_func_def)
 
+    if include_classes:
+        R('METHOD_DEF(STMTS)', render_method_def)
+        R('METHODS(METHOD_DEF)',          lambda m: m.render('py'))
+        R('METHODS(METHODS, METHOD_DEF)', lambda ms, m: ms.render('py') + m.render('py'), weight=0.5)
+        R('CLASS_DEF(METHODS)', render_class_def)
+        R('INSTANCE_USE(CTX)', render_instance_use)
+
     # === 9. TOP_STMT / FINAL_STMT ===
     _stmt_end = lambda c: c.render('py').rstrip('\n') + '\n'
     R('TOP_ASSIGNS(ADV_ASSIGNS)', _stmt_end)
@@ -537,6 +645,8 @@ def pygram_grammar(
     # === 10. Entry point ===
     if mode == 'function':
         prog_args = ['FUNC_DEF'] * max(1, n_functions)
+        if include_classes and n_classes > 0:
+            prog_args = prog_args + ['CLASS_DEF'] * n_classes + ['INSTANCE_USE']
     else:
         needs_fb = n_functions > 0 and 'int' not in param_types
         eff_inits = max(n_outer_inits, 2 if needs_fb else n_outer_inits)
