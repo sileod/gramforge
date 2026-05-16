@@ -576,11 +576,22 @@ def pygram_grammar(
     R('ADV_ASSIGNS', '')
     R('ADV_ASSIGNS(ADV_ASSIGN_TYPE)', '0')
 
+    def _fresh_init_stmt():
+        """Emit `v = N` for a fresh int var. Used as fallback by SWAP/AUG_ASSIGN
+        when no suitable target is in scope — avoids `pass` slop and seeds the
+        scope so subsequent statements have something to work with."""
+        used = set().union(*S.scope.all.values()) | set(init_vals()) | loop_excl()
+        v = next((c for c in chars if c not in used), random.choice(chars))
+        d = random.randint(0, max_number)
+        init_vals()[v] = str(d)
+        S.scope.declare(v, 'int', safe=(S.nest_depth == 0))
+        return f"{v} = {d}\n"
+
     if include_augmented_assigns:
         for _op in ['+=', '-=', '*=']: R('AUG_OP', _op)
         def render_aug_assign(v_node, op_node, e_node):
             v = v_node.render('py')
-            if not v.isidentifier(): return "pass\n"
+            if not v.isidentifier(): return _fresh_init_stmt()
             S.scope.last = {v}
             return f"{v} {op_node.render('py')} {e_node.render('py')}\n"
         R('AUG_ASSIGN(EXPR_ID, AUG_OP, TERM)', render_aug_assign)
@@ -590,7 +601,7 @@ def pygram_grammar(
             excl = loop_excl()
             pool = list((S.scope.safe['int'] if (safe_returns and S.nest_depth == 0)
                          else S.scope.all['int']) - excl)
-            if len(pool) < 2: return "pass\n"
+            if len(pool) < 2: return _fresh_init_stmt()
             a, b = random.sample(pool, 2)
             S.scope.last = {a, b}
             return f"{a}, {b} = {b}, {a}\n"
@@ -638,8 +649,12 @@ def pygram_grammar(
     R('STEP(CTX)',      lambda x: S.aux['loops'].get('step', '1'))
     R('FOR_HEAD(VAR, FOR_INIT, FOR_FINAL, STEP)', 'for 0 in range(1, 2, 3):')
     R('FOR_HEAD(VAR, FOR_INIT, FOR_FINAL)',       'for 0 in range(1, 2):')
-    R('FOR_LOOP(FOR_HEAD, BODY_STMT)',
-      lambda h, b: f"{h.render('py')}\n{_indent(render_block(b, S, loop=True))}\n")
+    def _render_for(h, b):
+        S.aux.setdefault('loop_kinds', []).append('for')
+        body = _indent(render_block(b, S, loop=True))
+        S.aux['loop_kinds'].pop()
+        return f"{h.render('py')}\n{body}\n"
+    R('FOR_LOOP(FOR_HEAD, BODY_STMT)', _render_for)
 
     R('REL_LESS', '<');    R('REL_LESS', '<=')
     R('REL_GREATER', '>'); R('REL_GREATER', '>=')
@@ -653,7 +668,9 @@ def pygram_grammar(
         init_s = S.aux['loops'].get('init_stmt', '')
         op_s, fin_s = op.render('py'), f.render('py')
         saved  = dict(S.aux['loops'])
+        S.aux.setdefault('loop_kinds', []).append('while')
         body_s = _indent(render_block(b, S, loop=True))
+        S.aux['loop_kinds'].pop()
         S.aux['loops'].clear(); S.aux['loops'].update(saved)
         upd_s  = u.render('py')
         return f"{init_s}while {var_s} {op_s} {fin_s}:\n{body_s}\n    {upd_s}\n"
@@ -678,8 +695,15 @@ def pygram_grammar(
         R('BODY_STMT(WH_G)',     '0', weight=0.3)
     if include_conditionals: R('BODY_STMT(IF_STMT)', '0', weight=0.5)
     if include_break_continue:
-        R('LOOP_CTL_STMT(CTX)',
-          lambda x: (random.choice(['break', 'continue']) if S.loop_depth > 0 else 'pass') + '\n')
+        # `continue` in a `while` body skips the update line (we emit it after
+        # the body) → infinite loop. Restrict to `break` when innermost loop
+        # is `while`; both allowed in `for` (Python advances the iterator).
+        def _render_loop_ctl(x):
+            kinds = S.aux.get('loop_kinds', [])
+            if not kinds: return 'pass\n'
+            choices = ['break', 'continue'] if kinds[-1] == 'for' else ['break']
+            return random.choice(choices) + '\n'
+        R('LOOP_CTL_STMT(CTX)', _render_loop_ctl)
         R('BODY_STMT(LOOP_CTL_STMT)', '0', weight=0.2)
     if include_try_except:
         R('TRY_STMT(BODY_STMT, BODY_STMT)',
