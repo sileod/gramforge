@@ -158,12 +158,27 @@ def pygram_grammar(
                 if pool: return random.choice(list(pool))
         return pv('int')
 
+    import re as _re
+    _IDENT_RE = _re.compile(r'\b[a-z_][a-zA-Z0-9_]*\b')
+    _NON_VAR_NAMES = {'len', 'True', 'False', 'None', 'range'} | set(
+        f"f{i}" for i in range(10)) | set(f"C{i}" for i in range(10))
+
+    def _has_var_ref(text):
+        """Heuristic: the rendered side has at least one identifier that isn't
+        a Python keyword/builtin/grammar-emitted def name. Cheaper than AST."""
+        return any(n not in _NON_VAR_NAMES for n in _IDENT_RE.findall(text))
+
     def render_cond_expr(v1, op, v2):
         lhs, op_s, rhs = v1.render('py'), op.render('py'), v2.render('py')
         if lhs == rhs and random.random() < 0.8:
             pool = (S.scope.safe if S.nest_depth == 0 else S.scope.all)['int']
             alts = [c for c in pool if c != lhs]
             if alts: rhs = random.choice(alts)
+        # Avoid pure-literal conditions like `13 > 11` or `len("hi") > 14`.
+        # If neither side carries a real var reference, inject one into rhs.
+        if not (_has_var_ref(lhs) or _has_var_ref(rhs)):
+            pool = (S.scope.safe if S.nest_depth == 0 else S.scope.all)['int']
+            if pool: rhs = random.choice(list(pool))
         return f"{lhs} {op_s} {rhs}"
 
     # === 3. Loops (math + while-var injection) ===
@@ -216,9 +231,18 @@ def pygram_grammar(
     def _fn_idx(name): return int(name[1:]) if name and name.startswith('f') else -1
 
     def _callable_functions(ret_t):
+        # At an unguarded call site (nest_depth==0) the call ALWAYS executes,
+        # so a self-call → instant RecursionError. Mutual cycles via methods
+        # are not detectable at render time, so we apply the same gate to
+        # cross-function calls when the call originates from inside a method
+        # (where the called function might call back into a method that
+        # called us). failure_rate=0 → all unguarded function calls inside
+        # methods are suppressed.
         candidates, current = [], S.aux['current_fn']
         cidx = _fn_idx(current)
         unguarded = S.nest_depth == 0
+        in_method = (S.scope is not None and S.scope.parent is not None
+                     and S.scope.parent.kind == 'class')
         for name, spec in S.defs.items():
             if spec.get('kind') != 'function' or spec.get('ret_t') != ret_t: continue
             is_self = (name == current)
@@ -226,6 +250,10 @@ def pygram_grammar(
             if is_self and unguarded and not gated(failure_rate): continue
             if (not is_self) and current is not None and not allow_cross_calls: continue
             if f0_is_root and current is not None and _fn_idx(name) < cidx: continue
+            # Mutual-recursion guard: cross calls from method bodies at unguarded
+            # sites are gated by failure_rate too.
+            if (not is_self) and unguarded and in_method and not gated(failure_rate):
+                continue
             candidates.append((name, spec['ptypes']))
         return candidates
 
@@ -503,6 +531,20 @@ def pygram_grammar(
         def render_instance_expr(ctx):
             classes = [(n, s) for n, s in S.defs.items() if s.get('kind') == 'class']
             if not classes: return LITERALS['int']()
+            # When rendering inside a class method, avoid instantiating the
+            # SAME class (or an ancestor) — that recreates self and recurses
+            # through methods. Gated by failure_rate so fuzz mode can opt in.
+            current_class = next((s.name for s in reversed(S.scopes)
+                                  if s.kind == 'class'), None)
+            if current_class is not None and not gated(failure_rate):
+                forbidden = {current_class}
+                # also exclude ancestors (inherited methods could call back)
+                p = S.defs.get(current_class, {}).get('parent')
+                while p:
+                    forbidden.add(p)
+                    p = S.defs.get(p, {}).get('parent')
+                classes = [(n, s) for n, s in classes if n not in forbidden]
+            if not classes: return LITERALS['int']()
             cname, spec = random.choice(classes)
             int_methods = [m for m in spec.get('methods', [])
                            if not m.get('is_dunder') and m.get('ret_t') == 'int']
@@ -631,11 +673,15 @@ def pygram_grammar(
         R('SWAP_STMT(CTX)', render_swap)
 
     # Conditionals
+    # All COND_EXPR forms must reference at least one variable. EXPR_ID-based
+    # rules already guarantee that (EXPR_ID resolves to a var or self.X).
+    # EXPRESSION-based rules can render as all-literal — route through a
+    # render fn that injects a var on the rhs when both sides are pure-literal.
+    # The dropped rule was COND_EXPR(LEN_EXPR, REL_OP, DIGIT) — always literal.
     R('COND_EXPR(EXPR_ID, REL_OP, EXPR_ID)',      render_cond_expr)
     R('COND_EXPR(EXPR_ID, REL_OP, DIGIT)',         '0 1 2')
-    R('COND_EXPR(LEN_EXPR, REL_OP, DIGIT)',        '0 1 2', weight=0.4)
     R('COND_EXPR(EXPR_ID, REL_OP, CALL_INT)',      '0 1 2', weight=0.4)
-    R('COND_EXPR(EXPRESSION, REL_OP, EXPRESSION)', '0 1 2', weight=0.3)
+    R('COND_EXPR(EXPRESSION, REL_OP, EXPRESSION)', render_cond_expr, weight=0.3)
     R('IF_BLK(COND_EXPR)',             'if 0:\n')
     R('IF_BLK(LOG_PREFIX, COND_EXPR)', 'if 01:\n', weight=0.3)
     R('ELIF_BLK(COND_EXPR)',           'elif 0:\n')
@@ -722,6 +768,9 @@ def pygram_grammar(
         # the body) → infinite loop. Restrict to `break` when innermost loop
         # is `while`; both allowed in `for` (Python advances the iterator).
         def _render_loop_ctl(x):
+            # break/continue outside a loop body is a SyntaxError. The grammar
+            # can pick this rule in any BODY_STMT slot (we don't filter by
+            # construction context). Fallback to `pass` when not in a loop.
             kinds = S.aux.get('loop_kinds', [])
             if not kinds: return 'pass\n'
             choices = ['break', 'continue'] if kinds[-1] == 'for' else ['break']
