@@ -1,6 +1,6 @@
 import random
 from .. import Substitution, Constraint, generate, init_grammar
-from ..codegen import CodeState, Scope, pick_var, gated, render_block
+from ..codegen_utils import CodeState, Scope, pick_var, gated, render_block
 
 # Types: 'int', 'str', 'list'. State (S) holds a scope stack, a defs registry
 # (S.defs[name] = {'kind':'function', 'arity':n, 'ret_t':T, 'ptypes':[…]}),

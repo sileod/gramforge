@@ -1,4 +1,4 @@
-"""Primitives for code-like grammars.
+"""Utilities for building code-like grammars (not a grammar itself).
 
 These factor the patterns that recur across `tinypy.py`, `pygram.py`, and any
 future code grammar (JavaScript, Rust, OOP languages, …):
