@@ -33,6 +33,10 @@ def pygram_grammar(
     triviality_rate=0.5,        # 0=force compound returns; 1=allow bare-var/literal returns
     usage_bias=0.6,             # 0=uniform name picks; 1=strongly prefer never-used names
                                 # (down-weights already-referenced defs/vars in selection)
+    inherit_rate=0.5,           # P(class i > 0 inherits from a previously defined class).
+                                # Inherited attrs are accessible as self.X in child methods.
+    include_dunders=True,       # add __str__ to some classes; instance_use uses print(obj)
+                                # to invoke it, exercising the dunder.
     # --- feature flags -------------------------
     include_print=True,
     include_loops=True,
@@ -307,15 +311,31 @@ def pygram_grammar(
         plan = []
         for i in range(n_classes):
             cname = f"C{i}"
-            attrs = {a: 'int' for a in random.sample(_ATTR_POOL, random.randint(1, 2))}
+            own = {a: 'int' for a in random.sample(_ATTR_POOL, random.randint(1, 2))}
+            # Inheritance: pick a previously defined class as parent (consistent
+            # use of THAT parent's attrs — not plan[i-1]).
+            parent_spec = (random.choice(plan)
+                           if i > 0 and random.random() < inherit_rate else None)
+            parent = parent_spec['name'] if parent_spec else None
+            inherited = dict(parent_spec['attrs']) if parent_spec else {}
+            # Avoid attr name collisions with parent
+            own = {a: t for a, t in own.items() if a not in inherited}
+            if not own and not inherited:  # ensure at least one attr to assign
+                own = {random.choice([a for a in _ATTR_POOL if a not in inherited]): 'int'}
+            attrs = {**inherited, **own}   # full set, ordered: parent first
+
             methods = []
             for j in range(random.randint(1, 2)):
                 n = random.randint(0, 1)
-                methods.append({'name': f"m{j}",
-                                'params': [random.choice([c for c in chars if c not in attrs])] if n else [],
+                p = ([random.choice([c for c in chars if c not in attrs])] if n else [])
+                methods.append({'name': f"m{j}", 'params': p,
                                 'ptypes': ['int'] * n, 'ret_t': 'int'})
-            plan.append({'name': cname, 'attrs': attrs, 'methods': methods})
-            S.define(cname, 'class', attrs=attrs, methods=methods)
+            if include_dunders and random.random() < 0.5:
+                methods.append({'name': '__str__', 'params': [], 'ptypes': [],
+                                'ret_t': 'str', 'is_dunder': True})
+            plan.append({'name': cname, 'parent': parent,
+                         'own_attrs': own, 'attrs': attrs, 'methods': methods})
+            S.define(cname, 'class', parent=parent, attrs=attrs, methods=methods)
         S.aux['class_plan'] = plan
         S.aux['class_idx'] = 0
 
@@ -352,43 +372,73 @@ def pygram_grammar(
     def render_class_def(body_node):
         cidx = S.aux['class_idx']; S.aux['class_idx'] = cidx + 1
         spec = S.aux['class_plan'][cidx]
-        cname, attrs = spec['name'], spec['attrs']
+        cname, attrs, parent = spec['name'], spec['attrs'], spec['parent']
 
-        # Plan can be extended by render_method_def (recursive METHODS); after
-        # rendering we know exactly how many landed — prune `spec['methods']`
-        # to that set so `render_instance_use` can't pick a non-existent name.
-        S.aux['method_plan'] = list(spec['methods'])
+        # Split dunders from regular methods: dunders are rendered inline (a
+        # short fixed shape) so they're guaranteed to land regardless of how
+        # many METHOD_DEF nodes the recursive METHODS produces.
+        regular = [m for m in spec['methods'] if not m.get('is_dunder')]
+        dunders = [m for m in spec['methods'] if m.get('is_dunder')]
+
+        S.aux['method_plan'] = list(regular)
         S.aux['method_idx']  = 0
         with S.push_scope(kind='class', name=cname, meta={'attrs': attrs}):
             methods_text = body_node.render('py')
-        spec['methods'] = S.aux['method_plan'][:S.aux['method_idx']]
+            dunders_text = ''.join(_render_dunder(d, attrs) for d in dunders)
+        spec['methods'] = S.aux['method_plan'][:S.aux['method_idx']] + dunders
         S.defs[cname]['methods'] = spec['methods']
 
-        init_sig  = ', '.join(['self'] + [f"{p}: {t}" for p, t in attrs.items()])
-        init_body = '\n'.join(f"    self.{p} = {p}" for p in attrs)
-        init_def  = f"def __init__({init_sig}):\n{init_body}\n"
-        return f"class {cname}:\n{_indent(init_def + methods_text)}\n"
+        init_sig = ', '.join(['self'] + [f"{p}: {t}" for p, t in attrs.items()])
+        own = spec['own_attrs']
+        inherited_args = ', '.join(p for p in attrs if p not in own)
+        init_lines = []
+        if parent:
+            init_lines.append(f"    super().__init__({inherited_args})")
+        init_lines.extend(f"    self.{p} = {p}" for p in own)
+        init_def = f"def __init__({init_sig}):\n" + "\n".join(init_lines) + "\n"
+
+        header = f"class {cname}({parent}):" if parent else f"class {cname}:"
+        return f"{header}\n{_indent(init_def + methods_text + dunders_text)}\n"
+
+    def _render_dunder(spec, attrs):
+        # V1 dunder: __str__ returns an f-string referencing one self attr.
+        # Triggered via `print(obj)` in render_instance_use.
+        if spec['name'] == '__str__':
+            attr = random.choice(list(attrs)) if attrs else None
+            body = (f'return f"<{{self.{attr}}}>"' if attr else 'return ""')
+            return f"def __str__(self) -> str:\n    {body}\n"
+        return ""
 
     def render_instance_use(ctx):
         """Emit one instantiate+method-call block per defined class.
 
         Bias picks each class's least-used method so the output exercises
-        the class surface area rather than calling m0 on everything."""
+        the class surface area rather than calling m0 on everything.
+        If the class defines __str__, sometimes `print(obj)` instead of
+        `print(obj.method(...))` so the dunder gets exercised."""
         classes = [(n, s) for n, s in S.defs.items() if s.get('kind') == 'class']
         lines = []
         for cname, spec in classes:
-            if not spec.get('methods'): continue
+            ms = spec.get('methods', [])
+            regular = [m for m in ms if not m.get('is_dunder')]
+            has_str = any(m['name'] == '__str__' for m in ms)
             init_args = ', '.join(_arg_of_type(t) for t in spec['attrs'].values())
-            mname = _biased_pick([m['name'] for m in spec['methods']])
-            method = next(m for m in spec['methods'] if m['name'] == mname)
-            margs = ', '.join(_arg_of_type(t) for t in method['ptypes'])
             used = set().union(*S.scope.all.values()) | set(init_vals())
             var = next((c for c in chars if c not in used), 'c')
             S.scope.all[f'instance:{cname}'].add(var)
             init_vals()[var] = f"{cname}(...)"
-            _bump_use(cname); _bump_use(mname)
+            _bump_use(cname)
             lines.append(f"{var} = {cname}({init_args})")
-            lines.append(f"print({var}.{mname}({margs}))")
+            # Choose call form: print(obj) for __str__, or print(obj.method())
+            if has_str and (not regular or random.random() < 0.4):
+                _bump_use('__str__')
+                lines.append(f"print({var})")
+            elif regular:
+                mname = _biased_pick([m['name'] for m in regular])
+                method = next(m for m in regular if m['name'] == mname)
+                margs = ', '.join(_arg_of_type(t) for t in method['ptypes'])
+                _bump_use(mname)
+                lines.append(f"print({var}.{mname}({margs}))")
         return '\n'.join(lines) + ('\n' if lines else '')
 
     # ============ 7. Grammar rules ============
@@ -423,6 +473,25 @@ def pygram_grammar(
         R('SELF_ATTR(CTX)', render_self_attr)
         R('TERM(SELF_ATTR)',    '0', weight=0.8)
         R('EXPR_ID(SELF_ATTR)', '0', weight=0.6)
+
+        # INSTANCE_EXPR: `C0(args).m0(args)` — an int expression that creates
+        # an instance and calls a method inline. Lets ANY function or method
+        # body reference defined classes (function-oriented use of OOP).
+        def render_instance_expr(ctx):
+            classes = [(n, s) for n, s in S.defs.items() if s.get('kind') == 'class']
+            if not classes: return LITERALS['int']()
+            cname, spec = random.choice(classes)
+            int_methods = [m for m in spec.get('methods', [])
+                           if not m.get('is_dunder') and m.get('ret_t') == 'int']
+            if not int_methods: return LITERALS['int']()
+            method = _biased_pick([m['name'] for m in int_methods])
+            method_spec = next(m for m in int_methods if m['name'] == method)
+            init_args = ', '.join(_arg_of_type(t) for t in spec['attrs'].values())
+            margs = ', '.join(_arg_of_type(t) for t in method_spec['ptypes'])
+            _bump_use(cname); _bump_use(method)
+            return f"{cname}({init_args}).{method}({margs})"
+        R('INSTANCE_EXPR(CTX)', render_instance_expr)
+        R('TERM(INSTANCE_EXPR)', '0', weight=0.6)
     R('EXPRESSION(TERM, ARITH_OP, TERM)',       '0 1 2')
     R('EXPRESSION(TERM)',                        '0', weight=0.35)
     R('EXPRESSION(EXPRESSION, ARITH_OP, TERM)', '(0) 1 2', weight=0.3)

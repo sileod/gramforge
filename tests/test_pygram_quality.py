@@ -22,7 +22,7 @@ DEPTH = 10
 SAFE_BUILTINS = {
     '__builtins__': {'print': lambda *a: None, 'range': range, 'len': len,
                      'int': int, 'str': str, 'list': list, 'bool': bool,
-                     'Exception': Exception,
+                     'Exception': Exception, 'super': super,
                      '__build_class__': __build_class__,
                      '__name__': '__main__'}
 }
