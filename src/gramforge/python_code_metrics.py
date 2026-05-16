@@ -62,6 +62,7 @@ class ExecutionReport:
     # --- runtime (ours) --------------------------------------------------
     exec_lines: int = 0
     steps: int = 0
+    n_calls: int = 0                      # function-call 'hops' during execution
     entry_args: Optional[list] = None     # args used in `_result = entry(…)` (if extracted)
 
     # back-compat aliases for our earlier API
@@ -254,10 +255,12 @@ def _safe_serialize(value: Any) -> Any:
 
 def _trace_run(code: str, exec_globals: dict, capture_vars: list) -> dict:
     """Inner: settrace + redirect stdout + run. Returns a dict (no I/O)."""
-    hits = set(); steps = [0]
+    hits = set(); steps = [0]; calls = [0]
     def tracer(frame, event, arg):
         if event == 'line':
             hits.add(frame.f_lineno); steps[0] += 1
+        elif event == 'call':
+            calls[0] += 1
         return tracer
     buf = io.StringIO()
     err_type = err_msg = None
@@ -276,6 +279,7 @@ def _trace_run(code: str, exec_globals: dict, capture_vars: list) -> dict:
             'error_type': err_type, 'error_msg': err_msg,
             'elapsed_ms': elapsed,
             'exec_lines': len(hits), 'steps': steps[0],
+            'n_calls': calls[0],
             'captured': captured, 'timed_out': False}
 
 
