@@ -32,14 +32,20 @@ def simple_english_grammar(cap=3, questions=True):
     R('decl_simple(np_sg_subj, was, adj)', '{0} {1} {2}', weight=0.2)
     R('decl_simple(np_pl_subj, were, adj)', '{0} {1} {2}', weight=0.2)
     # Negation via do-support (split: "does not" and the "doesn't" contraction)
-    R('decl_simple(np_sg_subj, does, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.15, constraint=_c_sv)
-    R('decl_simple(np_pl_subj, do, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.15, constraint=_c_sv)
-    R('decl_simple(np_sg_subj, doesnt, vp_action_base)', '{0} {1} {2}', weight=0.15, constraint=_c_sv)
-    R('decl_simple(np_pl_subj, dont, vp_action_base)', '{0} {1} {2}', weight=0.15, constraint=_c_sv)
+    _c_sv3 = Constraint("0∉3,3∉0")  # subj vs vp when vp is slot 3
+    _c_sv2 = Constraint("0∉2,2∉0")  # subj vs vp when vp is slot 2
+    R('decl_simple(np_sg_subj, does, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.15, constraint=_c_sv3)
+    R('decl_simple(np_pl_subj, do, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.15, constraint=_c_sv3)
+    R('decl_simple(np_sg_subj, doesnt, vp_action_base)', '{0} {1} {2}', weight=0.15, constraint=_c_sv2)
+    R('decl_simple(np_pl_subj, dont, vp_action_base)', '{0} {1} {2}', weight=0.15, constraint=_c_sv2)
     # Modals (number-invariant)
-    R('decl_simple(np_sg_subj, modal, vp_action_base)', '{0} {1} {2}', weight=0.3, constraint=_c_sv)
-    R('decl_simple(np_pl_subj, modal, vp_action_base)', '{0} {1} {2}', weight=0.3, constraint=_c_sv)
+    R('decl_simple(np_sg_subj, modal, vp_action_base)', '{0} {1} {2}', weight=0.3, constraint=_c_sv2)
+    R('decl_simple(np_pl_subj, modal, vp_action_base)', '{0} {1} {2}', weight=0.3, constraint=_c_sv2)
     R('conj', 'and'); R('conj', 'but'); R('conj', 'yet')
+    # Subordinating conjunction ("she sleeps because he runs")
+    R('decl_simple(decl_simple, sub_conj, decl_simple)', '{0} {1} {2}',
+      weight=0.08, constraint=Constraint("0∉2,2∉0"))
+    for s in ['because', 'when', 'if', 'although']: R('sub_conj', s)
 
     # Existential 'there'
     R('decl_simple(there, is, det_sg_a, n_sg_c)', '{0} {1} {2} {3}', weight=0.3)
@@ -81,10 +87,12 @@ def simple_english_grammar(cap=3, questions=True):
     for a in adjs_v: R('adj_v', a); R('adj', a)
     for s in ['best', 'worst', 'biggest', 'smallest']: R('sup', s)
 
-    # 2. Determiners
-    for d in ['the', 'this', 'that', 'every']: R('det_sg_univ', d)
+    # 2. Determiners (possessives like "her" work as both sg and pl universal)
+    for d in ['the', 'this', 'that', 'every', 'his', 'her', 'its', 'their', 'our']:
+        R('det_sg_univ', d)
     R('det_sg_a', 'a'); R('det_sg_an', 'an'); R('the', 'the')
-    for d in ['the', 'some', 'many', 'these', 'those']: R('det_pl', d)
+    for d in ['the', 'some', 'many', 'these', 'those', 'his', 'her', 'their', 'our']:
+        R('det_pl', d)
     R('det_pl_indef', 'some'); R('det_pl_indef', 'many')
 
     # 3. Phonetic chunks (adj + noun)
@@ -140,10 +148,14 @@ def simple_english_grammar(cap=3, questions=True):
     R('opt_adv', '')
     R('opt_adv(adv)', ' {0}', weight=0.4)
 
+    # opt_pp: optional VP-attached PP ("she runs in the park")
+    R('opt_pp', '')
+    R('opt_pp(PP)', ' {0}', weight=0.2)
+
     # vp_action_base: bare-form action VP shared by negation, modals, do-questions, vp_pl, vp_lex_base.
     # 1∉3,3∉1 prevents "give Alice to Alice".
     _c_do_io = Constraint("1∉3,3∉1")
-    R('vp_action_base(v_intr_base, opt_adv)', '{0}{1}')
+    R('vp_action_base(v_intr_base, opt_adv, opt_pp)', '{0}{1}{2}')
     R('vp_action_base(v_trans_base, np_obj)', '{0} {1}')
     R('vp_action_base(v_ditrans_base, np_io, np_do_doc)', '{0} {1} {2}')
     R('vp_action_base(v_ditrans_base, np_obj, to, np_io)', '{0} {1} {2} {3}',
@@ -152,14 +164,14 @@ def simple_english_grammar(cap=3, questions=True):
     R('vp_lex_base(vp_action_base)', '{0}')
 
     # 3sg present (must inflect, so listed separately from base)
-    R('vp_sg(v_intr_sg, opt_adv)', '{0}{1}')
+    R('vp_sg(v_intr_sg, opt_adv, opt_pp)', '{0}{1}{2}')
     R('vp_sg(v_trans_sg, np_obj)', '{0} {1}')
     R('vp_sg(v_ditrans_sg, np_io, np_do_doc)', '{0} {1} {2}')
     R('vp_sg(v_ditrans_sg, np_obj, to, np_io)', '{0} {1} {2} {3}',
       weight=0.5, constraint=_c_do_io)
 
     # Past tense (number-invariant for action verbs)
-    R('vp_past(v_intr_past, opt_adv)', '{0}{1}')
+    R('vp_past(v_intr_past, opt_adv, opt_pp)', '{0}{1}{2}')
     R('vp_past(v_trans_past, np_obj)', '{0} {1}')
     R('vp_past(v_ditrans_past, np_io, np_do_doc)', '{0} {1} {2}')
     R('vp_past(v_ditrans_past, np_obj, to, np_io)', '{0} {1} {2} {3}',
