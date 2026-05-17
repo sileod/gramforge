@@ -17,7 +17,7 @@ if not MISSING_MODULES:
     from gramforge.grammars import arith_grammar, dyck_grammar, simple_english_grammar
 
 
-TOKEN_RE = re.compile(r"<=|>=|!=|==|\w+|[^\w\s]")
+TOKEN_RE = re.compile(r"<=|>=|!=|==|\w+'\w+|\w+|[^\w\s]")
 if not MISSING_MODULES:
     CFG_CASES = [
         ('arith', lambda: arith_grammar(), 'py', {'min_depth': 4, 'max_depth': 6}),
