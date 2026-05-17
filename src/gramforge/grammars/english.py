@@ -54,13 +54,22 @@ def simple_english_grammar(cap=3, questions=True):
 
     # --- Questions ---
     if questions:
-        # Do-support
+        # Do-support (present)
         R('question(does, np_sg_subj, vp_action_base)', '{0} {1} {2}')
         R('question(do, np_pl_subj, vp_action_base)', '{0} {1} {2}')
-        # Copula
+        # Did-support (past, number-invariant)
+        R('question(did, np_sg_subj, vp_action_base)', '{0} {1} {2}')
+        R('question(did, np_pl_subj, vp_action_base)', '{0} {1} {2}')
+        R('did', 'did')
+        # Modal questions ("can she run?")
+        R('question(modal, np_sg_subj, vp_action_base)', '{0} {1} {2}', weight=0.5)
+        R('question(modal, np_pl_subj, vp_action_base)', '{0} {1} {2}', weight=0.5)
+        # Copula present + past
         R('question(is, np_sg_subj, adj)', '{0} {1} {2}')
         R('question(are, np_pl_subj, adj)', '{0} {1} {2}')
-        # Wh-Obj/Adv (do-support)
+        R('question(was, np_sg_subj, adj)', '{0} {1} {2}', weight=0.5)
+        R('question(were, np_pl_subj, adj)', '{0} {1} {2}', weight=0.5)
+        # Wh-Obj/Adv (do-support, present)
         R('question(wh_obj, does, np_sg_subj, v_trans_base)', '{0} {1} {2} {3}')
         R('question(wh_obj, do, np_pl_subj, v_trans_base)', '{0} {1} {2} {3}')
         R('question(wh_adv, does, np_sg_subj, v_intr_base)', '{0} {1} {2} {3}')
@@ -73,8 +82,12 @@ def simple_english_grammar(cap=3, questions=True):
     # --- Relative clauses ---
     R('rel_subj_sg(that, vp_sg)', ' {0} {1}')
     R('rel_subj_pl(that, vp_pl)', ' {0} {1}')
+    R('rel_subj_sg(that, vp_past)', ' {0} {1}', weight=0.5)
+    R('rel_subj_pl(that, vp_past)', ' {0} {1}', weight=0.5)
     R('rel_obj(that, np_sg_subj, v_trans_sg)', ' {0} {1} {2}')
     R('rel_obj(that, np_pl_subj, v_trans_base)', ' {0} {1} {2}')
+    R('rel_obj(that, np_sg_subj, v_trans_past)', ' {0} {1} {2}', weight=0.5)
+    R('rel_obj(that, np_pl_subj, v_trans_past)', ' {0} {1} {2}', weight=0.5)
     R('that', 'that')
 
     # --- Noun phrases ---
