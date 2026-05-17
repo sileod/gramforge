@@ -37,25 +37,12 @@ class FlatList(list):
 
 
 def Constraint(constraint_str):
-    """Argument-containment constraint over rendered children.
-
-    A clause "i∉j" succeeds when child i's surface does not occur as a
-    *whole-token sequence* inside child j's surface. Token-level matching
-    avoids false positives like "he" matching inside "her".
-
-    Clauses referencing children not yet generated (partial construction)
-    are skipped — they will be re-checked once those children exist."""
     def generated_function(x):
-        for cond in constraint_str.split(','):
+        conditions = constraint_str.split(',')
+        for cond in conditions:
             i, j = map(int, cond.split('∉'))
-            if i >= len(x) or j >= len(x):
-                continue
-            tokens_i = x[i].render('eng').split()
-            tokens_j = x[j].render('eng').split()
-            n = len(tokens_i)
-            for k in range(len(tokens_j) - n + 1):
-                if tokens_j[k:k + n] == tokens_i:
-                    return False
+            if x[i].render('eng') in x[j].render('eng'):
+                return False
         return True
     return generated_function
 

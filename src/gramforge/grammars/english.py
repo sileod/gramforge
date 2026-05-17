@@ -1,4 +1,29 @@
-from gramforge import init_grammar, Constraint
+from gramforge import init_grammar
+
+
+def _eng_constraint(constraint_str):
+    """Local "i∉j" constraint for the English grammar.
+
+    Compares whole-token sequences (so "he" doesn't match inside "her")
+    and tolerates incremental construction where the indexed children
+    don't exist yet. Kept local — the framework's Constraint is intentionally
+    untouched so other grammars retain their original semantics."""
+    def f(x):
+        for cond in constraint_str.split(','):
+            i, j = map(int, cond.split('∉'))
+            if i >= len(x) or j >= len(x):
+                continue
+            ti = x[i].render('eng').split()
+            tj = x[j].render('eng').split()
+            n = len(ti)
+            for k in range(len(tj) - n + 1):
+                if tj[k:k + n] == ti:
+                    return False
+        return True
+    return f
+
+Constraint = _eng_constraint  # shadow the framework name within this module
+
 
 def simple_english_grammar(cap=3, questions=True):
     R = init_grammar(['eng'], preprocess_template=lambda s: s)
