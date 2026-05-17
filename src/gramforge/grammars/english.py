@@ -29,8 +29,6 @@ def simple_english_grammar(cap=3, questions=True):
     # Past tense (number-invariant for action verbs)
     R('decl_simple(np_sg_subj, vp_past)', '{0} {1}', weight=0.4, constraint=_c_sv)
     R('decl_simple(np_pl_subj, vp_past)', '{0} {1}', weight=0.4, constraint=_c_sv)
-    R('decl_simple(np_sg_subj, was, adj)', '{0} {1} {2}', weight=0.2)
-    R('decl_simple(np_pl_subj, were, adj)', '{0} {1} {2}', weight=0.2)
     # Negation via do-support (split: "does not" and the "doesn't" contraction)
     _c_sv3 = Constraint("0∉3,3∉0")  # subj vs vp when vp is slot 3
     _c_sv2 = Constraint("0∉2,2∉0")  # subj vs vp when vp is slot 2
@@ -193,11 +191,26 @@ def simple_english_grammar(cap=3, questions=True):
     R('vp_past(v_ditrans_past, np_obj, to, np_io)', '{0} {1} {2} {3}',
       weight=0.5, constraint=_c_do_io)
 
-    # Copula (present)
+    # Sentential complement ("she said that he was happy"). Tests cross-clause
+    # agreement: the embedded clause has its own subject and verb in its own
+    # tense, decoupled from the matrix verb's tense and number.
+    R('vp_sg(v_cc_sg, that, decl_simple)', '{0} {1} {2}', weight=0.08)
+    R('vp_action_base(v_cc_base, that, decl_simple)', '{0} {1} {2}', weight=0.08)
+    R('vp_past(v_cc_past, that, decl_simple)', '{0} {1} {2}', weight=0.08)
+
+    # Copula present + past (affirmative and negative)
     R('vp_sg(is, adj)', '{0} {1}')
+    R('vp_sg(is, not_, adj)', '{0} {1} {2}', weight=0.3)
     R('vp_pl(are, adj)', '{0} {1}')
-    # Bare-form "be" copula (used by modals / negation: "she can be happy")
-    R('vp_action_base(be, adj)', '{0} {1}', weight=0.2)
+    R('vp_pl(are, not_, adj)', '{0} {1} {2}', weight=0.3)
+    R('vp_past(was, adj)', '{0} {1}')
+    R('vp_past(was, not_, adj)', '{0} {1} {2}', weight=0.3)
+    R('vp_past(were, adj)', '{0} {1}')
+    R('vp_past(were, not_, adj)', '{0} {1} {2}', weight=0.3)
+    # Bare-form "be" used ONLY after a real modal (never via do-support).
+    # Inlined here so it can't leak into finite vp_pl / vp_lex_base slots.
+    R('decl_simple(np_sg_subj, modal, be, adj)', '{0} {1} {2} {3}', weight=0.15)
+    R('decl_simple(np_pl_subj, modal, be, adj)', '{0} {1} {2} {3}', weight=0.15)
     R('be', 'be')
 
     # VP coordination ("she runs and sleeps"); same Constraint blocks "X and X"
@@ -253,5 +266,9 @@ def simple_english_grammar(cap=3, questions=True):
                            ('send','sends','sent'), ('tell','tells','told'),
                            ('show','shows','showed')]:
         R('v_ditrans_base', base); R('v_ditrans_sg', sg); R('v_ditrans_past', past)
+    # CC-taking verbs ("she said that he was happy")
+    for base, sg, past in [('say','says','said'), ('think','thinks','thought'),
+                           ('believe','believes','believed'), ('know','knows','knew')]:
+        R('v_cc_base', base); R('v_cc_sg', sg); R('v_cc_past', past)
 
     return R
