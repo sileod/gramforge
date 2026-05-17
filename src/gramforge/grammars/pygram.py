@@ -168,17 +168,31 @@ def pygram_grammar(
         a Python keyword/builtin/grammar-emitted def name. Cheaper than AST."""
         return any(n not in _NON_VAR_NAMES for n in _IDENT_RE.findall(text))
 
+    def _any_int_ref():
+        """Find ANY var reference we can stick into a degenerate cond_expr —
+        walks scope chain, falls back to self.attr inside a class method,
+        only returns None if truly nothing's available."""
+        candidate = pick_var(S, 'int', excluded=loop_excl(),
+                             chars=chars, literals=LITERALS,
+                             safe_mode=False)
+        # pick_var with no var found returns a literal — if it does, try self.X
+        if candidate and candidate.isidentifier(): return candidate
+        cls = next((s for s in reversed(S.scopes) if s.kind == 'class'), None)
+        if cls and cls.meta.get('attrs'):
+            return f"self.{random.choice(list(cls.meta['attrs']))}"
+        return None
+
     def render_cond_expr(v1, op, v2):
         lhs, op_s, rhs = v1.render('py'), op.render('py'), v2.render('py')
         if lhs == rhs and random.random() < 0.8:
             pool = (S.scope.safe if S.nest_depth == 0 else S.scope.all)['int']
             alts = [c for c in pool if c != lhs]
             if alts: rhs = random.choice(alts)
-        # Avoid pure-literal conditions like `13 > 11` or `len("hi") > 14`.
-        # If neither side carries a real var reference, inject one into rhs.
+        # No pure-literal conditions like `13 > 11` or `14 + 6 == 1 * 12`.
+        # Walk the scope chain (incl. class attrs) to find a var reference.
         if not (_has_var_ref(lhs) or _has_var_ref(rhs)):
-            pool = (S.scope.safe if S.nest_depth == 0 else S.scope.all)['int']
-            if pool: rhs = random.choice(list(pool))
+            ref = _any_int_ref()
+            if ref: rhs = ref
         return f"{lhs} {op_s} {rhs}"
 
     # === 3. Loops (math + while-var injection) ===
