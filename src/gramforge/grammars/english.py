@@ -205,15 +205,20 @@ def simple_english_grammar(cap=3, questions=True):
     R('vp_action_base(v_cc_base, that, decl_simple)', '{0} {1} {2}', weight=0.08)
     R('vp_past(v_cc_past, that, decl_simple)', '{0} {1} {2}', weight=0.08)
 
-    # Copula present + past (affirmative and negative)
+    # Present copula goes through vp_sg / vp_pl (number is already split there).
     R('vp_sg(is, adj)', '{0} {1}')
     R('vp_sg(is, not_, adj)', '{0} {1} {2}', weight=0.3)
     R('vp_pl(are, adj)', '{0} {1}')
     R('vp_pl(are, not_, adj)', '{0} {1} {2}', weight=0.3)
-    R('vp_past(was, adj)', '{0} {1}')
-    R('vp_past(was, not_, adj)', '{0} {1} {2}', weight=0.3)
-    R('vp_past(were, adj)', '{0} {1}')
-    R('vp_past(were, not_, adj)', '{0} {1} {2}', weight=0.3)
+    # Past copula MUST agree (was/were) — vp_past is number-invariant for
+    # action verbs, so the copula is inlined per subject number instead.
+    R('decl_simple(np_sg_subj, was, adj)', '{0} {1} {2}', weight=0.2)
+    R('decl_simple(np_sg_subj, was, not_, adj)', '{0} {1} {2} {3}', weight=0.1)
+    R('decl_simple(np_pl_subj, were, adj)', '{0} {1} {2}', weight=0.2)
+    R('decl_simple(np_pl_subj, were, not_, adj)', '{0} {1} {2} {3}', weight=0.1)
+    # Past copula in subject-RC: agreement preserved via dedicated rules
+    R('rel_subj_sg(that, was, adj)', ' {0} {1} {2}', weight=0.3)
+    R('rel_subj_pl(that, were, adj)', ' {0} {1} {2}', weight=0.3)
     # Bare-form "be" used ONLY after a real modal (never via do-support).
     # Inlined here so it can't leak into finite vp_pl / vp_lex_base slots.
     R('decl_simple(np_sg_subj, modal, be, adj)', '{0} {1} {2} {3}', weight=0.15)
