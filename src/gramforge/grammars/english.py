@@ -29,13 +29,17 @@ def simple_english_grammar(cap=3, questions=True):
     # Past tense (number-invariant for action verbs)
     R('decl_simple(np_sg_subj, vp_past)', '{0} {1}', weight=0.4, constraint=_c_sv)
     R('decl_simple(np_pl_subj, vp_past)', '{0} {1}', weight=0.4, constraint=_c_sv)
-    # Negation via do-support (split: "does not" and the "doesn't" contraction)
+    # Negation via do-support (present + past; "doesn't" / "don't" / "didn't" contractions)
     _c_sv3 = Constraint("0∉3,3∉0")  # subj vs vp when vp is slot 3
     _c_sv2 = Constraint("0∉2,2∉0")  # subj vs vp when vp is slot 2
-    R('decl_simple(np_sg_subj, does, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.15, constraint=_c_sv3)
-    R('decl_simple(np_pl_subj, do, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.15, constraint=_c_sv3)
-    R('decl_simple(np_sg_subj, doesnt, vp_action_base)', '{0} {1} {2}', weight=0.15, constraint=_c_sv2)
-    R('decl_simple(np_pl_subj, dont, vp_action_base)', '{0} {1} {2}', weight=0.15, constraint=_c_sv2)
+    R('decl_simple(np_sg_subj, does, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.12, constraint=_c_sv3)
+    R('decl_simple(np_pl_subj, do, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.12, constraint=_c_sv3)
+    R('decl_simple(np_sg_subj, did, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.12, constraint=_c_sv3)
+    R('decl_simple(np_pl_subj, did, not_, vp_action_base)', '{0} {1} {2} {3}', weight=0.12, constraint=_c_sv3)
+    R('decl_simple(np_sg_subj, doesnt, vp_action_base)', '{0} {1} {2}', weight=0.12, constraint=_c_sv2)
+    R('decl_simple(np_pl_subj, dont, vp_action_base)', '{0} {1} {2}', weight=0.12, constraint=_c_sv2)
+    R('decl_simple(np_sg_subj, didnt, vp_action_base)', '{0} {1} {2}', weight=0.12, constraint=_c_sv2)
+    R('decl_simple(np_pl_subj, didnt, vp_action_base)', '{0} {1} {2}', weight=0.12, constraint=_c_sv2)
     # Modals (number-invariant)
     R('decl_simple(np_sg_subj, modal, vp_action_base)', '{0} {1} {2}', weight=0.3, constraint=_c_sv2)
     R('decl_simple(np_pl_subj, modal, vp_action_base)', '{0} {1} {2}', weight=0.3, constraint=_c_sv2)
@@ -45,10 +49,13 @@ def simple_english_grammar(cap=3, questions=True):
       weight=0.08, constraint=Constraint("0∉2,2∉0"))
     for s in ['because', 'when', 'if', 'although']: R('sub_conj', s)
 
-    # Existential 'there'
+    # Existential 'there' (present + past)
     R('decl_simple(there, is, det_sg_a, n_sg_c)', '{0} {1} {2} {3}', weight=0.3)
     R('decl_simple(there, is, det_sg_an, n_sg_v)', '{0} {1} {2} {3}', weight=0.3)
     R('decl_simple(there, are, det_pl_indef, n_pl)', '{0} {1} {2} {3}', weight=0.3)
+    R('decl_simple(there, was, det_sg_a, n_sg_c)', '{0} {1} {2} {3}', weight=0.15)
+    R('decl_simple(there, was, det_sg_an, n_sg_v)', '{0} {1} {2} {3}', weight=0.15)
+    R('decl_simple(there, were, det_pl_indef, n_pl)', '{0} {1} {2} {3}', weight=0.15)
 
     # --- Questions ---
     if questions:
@@ -242,7 +249,8 @@ def simple_english_grammar(cap=3, questions=True):
     R('wh_adv', 'where'); R('wh_adv', 'when'); R('wh_adv', 'why')
     R('wh_reason', 'why')
 
-    R('not_', 'not'); R('doesnt', "doesn't"); R('dont', "don't")
+    R('not_', 'not')
+    R('doesnt', "doesn't"); R('dont', "don't"); R('didnt', "didn't")
     for m in ['can', 'will', 'should', 'must', 'may', "won't", "shouldn't", "can't"]:
         R('modal', m)
 
