@@ -152,6 +152,9 @@ def simple_english_grammar(cap=3, questions=True):
     R('np_obj(np_sg_full)', '{0}'); R('np_obj(np_pl_full)', '{0}')
     R('np_obj(pro_sg_obj)', '{0}'); R('np_obj(pro_pl_obj)', '{0}')
     R('np_obj(name)', '{0}')
+    # Compound object ("she meets Alice and Bob")
+    R('np_obj(np_obj, np_obj)', '{0} and {1}', weight=0.05,
+      constraint=Constraint("0∉1,1∉0"))
     # Indirect object (animate)
     R('np_io(pro_io_sg)', '{0}'); R('np_io(pro_io_pl)', '{0}'); R('np_io(name)', '{0}')
     # Direct object in double-object construction (no pronouns: "give him it" is awkward)
@@ -242,10 +245,13 @@ def simple_english_grammar(cap=3, questions=True):
     for base, sg, past in [('meet','meets','met'), ('help','helps','helped'),
                            ('find','finds','found'), ('love','loves','loved'),
                            ('see','sees','saw'), ('like','likes','liked'),
-                           ('know','knows','knew'), ('have','has','had')]:
+                           ('know','knows','knew'), ('have','has','had'),
+                           ('watch','watches','watched'), ('want','wants','wanted'),
+                           ('visit','visits','visited'), ('call','calls','called')]:
         R('v_trans_base', base); R('v_trans_sg', sg); R('v_trans_past', past)
     for base, sg, past in [('give','gives','gave'), ('offer','offers','offered'),
-                           ('send','sends','sent')]:
+                           ('send','sends','sent'), ('tell','tells','told'),
+                           ('show','shows','showed')]:
         R('v_ditrans_base', base); R('v_ditrans_sg', sg); R('v_ditrans_past', past)
 
     return R
