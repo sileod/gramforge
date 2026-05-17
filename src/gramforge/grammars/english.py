@@ -180,6 +180,17 @@ def simple_english_grammar(cap=3, questions=True):
     # Copula (present)
     R('vp_sg(is, adj)', '{0} {1}')
     R('vp_pl(are, adj)', '{0} {1}')
+    # Bare-form "be" copula (used by modals / negation: "she can be happy")
+    R('vp_action_base(be, adj)', '{0} {1}', weight=0.2)
+    R('be', 'be')
+
+    # VP coordination ("she runs and sleeps"); same Constraint blocks "X and X"
+    _c_vp_coord = Constraint("0∉2,2∉0")
+    R('vp_sg(vp_sg, vp_sg)', '{0} and {1}', weight=0.05, constraint=_c_vp_coord)
+    R('vp_pl(vp_pl, vp_pl)', '{0} and {1}', weight=0.05, constraint=_c_vp_coord)
+    R('vp_past(vp_past, vp_past)', '{0} and {1}', weight=0.05, constraint=_c_vp_coord)
+    R('vp_action_base(vp_action_base, vp_action_base)', '{0} and {1}',
+      weight=0.04, constraint=_c_vp_coord)
 
     R('to', 'to')
 

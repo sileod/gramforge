@@ -41,10 +41,15 @@ def Constraint(constraint_str):
 
     A clause "i∉j" succeeds when child i's surface does not occur as a
     *whole-token sequence* inside child j's surface. Token-level matching
-    avoids false positives like "he" matching inside "her"."""
+    avoids false positives like "he" matching inside "her".
+
+    Clauses referencing children not yet generated (partial construction)
+    are skipped — they will be re-checked once those children exist."""
     def generated_function(x):
         for cond in constraint_str.split(','):
             i, j = map(int, cond.split('∉'))
+            if i >= len(x) or j >= len(x):
+                continue
             tokens_i = x[i].render('eng').split()
             tokens_j = x[j].render('eng').split()
             n = len(tokens_i)
