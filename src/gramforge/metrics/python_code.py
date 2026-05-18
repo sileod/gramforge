@@ -4,7 +4,7 @@ Pairs with grammars like `pygram` that produce executable Python: lets you
 filter/score samples by static shape AND runtime behavior.
 
 Usage:
-    from gramforge.python_code_metrics import analyze, summarize
+    from gramforge.metrics.python_code import analyze, summarize
 
     report = analyze(code)                            # one sample
     table  = summarize([analyze(c) for c in samples]) # batch stats

@@ -15,7 +15,7 @@ Designed for downstream tasks that need such programs as input:
   - **refactoring / simplification** (rewrite preserving `_result`)
   - **output-prediction MCQ / OpenQA** etc.
 
-A companion runtime-aware analyzer is in `gramforge.python_code_metrics`
+A companion runtime-aware analyzer is in `gramforge.metrics.python_code`
 (static + execution metrics, identity check, subprocess sandbox).
 
 Implementation notes
