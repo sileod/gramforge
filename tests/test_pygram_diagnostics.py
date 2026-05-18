@@ -16,7 +16,7 @@ import unittest
 
 from gramforge import generate
 from gramforge.grammars.pygram import pygram_grammar
-from gramforge.python_code_metrics import analyze, summarize
+from gramforge.metrics.python_code import analyze, summarize
 
 N_SAMPLES = 30   # per config
 DEPTH = 14
