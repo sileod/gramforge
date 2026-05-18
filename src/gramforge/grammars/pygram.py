@@ -79,8 +79,10 @@ def pygram_grammar(
     endpoint_name='endpoint',         # name of the exposed wrapper function
     endpoint_mode='auto',             # 'auto' | 'f0' | 'method' | 'none'
     emit_endpoint=True,               # emit the wrapper function
-    emit_result=False,                # also emit `_result = endpoint(...)`
-    print_result=True,                # emit `print(endpoint(...))` or `print(_result)`
+    emit_result=False,                # also emit `_result = endpoint(args)`
+                                      # — no trailer is emitted unless this is True
+    print_result=True,                # only meaningful with emit_result=True:
+                                      # emits `print(_result)` after assignment
     include_instance_use=False,       # legacy script-style class trailer (deprecated)
 ):
     R = init_grammar(['py'])
@@ -635,29 +637,27 @@ def pygram_grammar(
                 f"    return obj.{ep['method']}({meth_args})\n")
 
     def render_endpoint_call(ctx):
-        """Emit the trailer that invokes the entry point.
-        Routes to (a) endpoint wrapper when emit_endpoint and plan is valid,
-        else (b) legacy `_result = f0(...)` when emit_result is set,
-        else (c) nothing."""
+        """Emit the optional `_result = endpoint(args)` trailer.
+
+        The canonical default (emit_endpoint=True, emit_result=False) emits
+        NOTHING here — output stops after `def endpoint(...): ...`. The
+        endpoint is a typed function definition, not a runnable script.
+
+        emit_result=True is the opt-in for runtime capture: emits
+            _result = endpoint(args)
+        followed by `print(_result)` iff print_result is also True.
+
+        No legacy `_result = f0(...)` fallback — if there is no valid
+        endpoint, nothing is emitted (the contract is the wrapper)."""
+        if not (emit_result and emit_endpoint): return ''
         ep = _validated_endpoint_plan()
-        if emit_endpoint and ep:
-            if ep['kind'] == 'function':
-                types = ep['ptypes']
-            else:
-                types = list(ep['attrs'].values()) + list(ep['mptypes'])
-            args = ', '.join(_arg_of_type(t) for t in types)
-            call = f"{endpoint_name}({args})"
-        elif emit_result:
-            f0 = S.defs.get('f0')
-            if not f0: return ''
-            args = ', '.join(_arg_of_type(t) for t in f0['ptypes'])
-            call = f"f0({args})"
-        else:
-            return ''
-        if emit_result and print_result: return f"_result = {call}\nprint(_result)\n"
-        if emit_result:                  return f"_result = {call}\n"
-        if print_result:                 return f"print({call})\n"
-        return ''
+        if not ep: return ''
+        types = (ep['ptypes'] if ep['kind'] == 'function'
+                 else list(ep['attrs'].values()) + list(ep['mptypes']))
+        args = ', '.join(_arg_of_type(t) for t in types)
+        out  = f"_result = {endpoint_name}({args})\n"
+        if print_result: out += "print(_result)\n"
+        return out
 
     # ============ 7. Grammar rules ============
     R('CTX', '')

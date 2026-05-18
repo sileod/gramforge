@@ -35,7 +35,9 @@ def _timeout_handler(sig, frame):
 
 def _run_seed(kw, seed):
     """Return (ok, err_type, code) for a single seed."""
-    kw = {'n_functions': 2, **kw}   # default; caller can override
+    # emit_result=True ensures the endpoint actually runs (canonical default
+    # is just the def; we want to verify runtime correctness here).
+    kw = {'n_functions': 2, 'emit_result': True, **kw}   # caller can override
     g = pygram_grammar(**kw)
     code = generate(g, seed=seed, max_depth=DEPTH) @ 'py'
     try:
