@@ -73,8 +73,15 @@ def pygram_grammar(
     include_swap=True,
     include_break_continue=True,
     include_try_except=True,
-    include_classes=False,            # generate class definitions + instance usage
+    include_classes=False,            # generate class definitions
     n_classes=1,                      # only used when include_classes=True
+    # --- endpoint (function-first canonical form) ----------------------
+    endpoint_name='endpoint',         # name of the exposed wrapper function
+    endpoint_mode='auto',             # 'auto' | 'f0' | 'method' | 'none'
+    emit_endpoint=True,               # emit the wrapper function
+    emit_result=False,                # also emit `_result = endpoint(...)`
+    print_result=True,                # emit `print(endpoint(...))` or `print(_result)`
+    include_instance_use=False,       # legacy script-style class trailer (deprecated)
 ):
     R = init_grammar(['py'])
     chars = list("abcdefghijklmnopqrstuvwxyz")
@@ -101,9 +108,10 @@ def pygram_grammar(
         S.scopes.append(Scope(kind='module'))
         S.aux.update({'fn_plan': [], 'fn_plan_idx': 0, 'current_fn': None, 'loops': {},
                       'class_plan': [], 'class_idx': 0, 'method_plan': [], 'method_idx': 0,
-                      'use_counts': {}})
+                      'use_counts': {}, 'endpoint_plan': None})
         if n_functions > 0: _make_plan()
         if include_classes and n_classes > 0: _make_class_plan()
+        S.aux['endpoint_plan'] = _make_endpoint_plan()
         return ""
 
     def _bump_use(name):
@@ -315,6 +323,9 @@ def pygram_grammar(
         cls = next((s for s in reversed(S.scopes) if s.kind == 'class'), None) if include_classes else None
         if cls and ret_t == 'int':
             safe_pool = safe_pool | {f"self.{a}" for a, t in cls.meta.get('attrs', {}).items() if t == ret_t}
+        # Endpoint-targeted body: force non-trivial return regardless of knob.
+        triv = S.aux.get('triviality_override')
+        if triv is None: triv = triviality_rate
         recur_ok = allow_recursion and gated(failure_rate)
         r = random.random()
         if (r < 0.25 and recur_ok) or (r < 0.25 and allow_cross_calls):
@@ -328,7 +339,7 @@ def pygram_grammar(
                 cv = random.choice(list(safe_pool))
                 return f"{a} if {cv} {random.choice(['<', '>', '==', '!='])} {random.randint(0, max_number)} else {b}"
         pool = safe_pool if safe_returns else top.all[ret_t]
-        if pool and ret_t == 'int' and random.random() > triviality_rate:
+        if pool and ret_t == 'int' and random.random() > triv:
             if len(pool) >= 2:
                 a, b = random.sample(list(pool), 2)
                 return f"{a} {random.choice(['+', '-', '*'])} {b}"
@@ -352,9 +363,14 @@ def pygram_grammar(
 
         prev_fn = S.aux.get('current_fn')
         S.aux['current_fn'] = fname
+        # If this function is the endpoint target, force non-trivial return.
+        is_target = (_endpoint_target_marker() == f"fn:{fname}")
+        prev_triv = S.aux.get('triviality_override')
+        if is_target: S.aux['triviality_override'] = 0.0
         with S.push_scope(kind='function', name=fname, params=params, ptypes=ptypes):
             body_text = body_node.render('py')
             ret_v = _pick_return_value(ret_t)
+        S.aux['triviality_override'] = prev_triv
         S.aux['current_fn'] = prev_fn
 
         if type_hints:
@@ -425,9 +441,16 @@ def pygram_grammar(
 
         prev_fn = S.aux.get('current_fn')
         S.aux['current_fn'] = mname
+        # If this is the endpoint target method, force non-trivial return.
+        cls_scope = next((s for s in reversed(S.scopes) if s.kind == 'class'), None)
+        is_target = (cls_scope is not None
+                     and _endpoint_target_marker() == f"method:{cls_scope.name}.{mname}")
+        prev_triv = S.aux.get('triviality_override')
+        if is_target: S.aux['triviality_override'] = 0.0
         with S.push_scope(kind='function', name=mname, params=params, ptypes=ptypes):
             body_text = body_node.render('py')
             ret_v = _pick_return_value(ret_t)
+        S.aux['triviality_override'] = prev_triv
         S.aux['current_fn'] = prev_fn
 
         sig = ', '.join(['self'] + [f"{p}: {t}" for p, t in zip(params, ptypes)])
@@ -505,6 +528,136 @@ def pygram_grammar(
                 _bump_use(mname)
                 lines.append(f"print({var}.{mname}({margs}))")
         return '\n'.join(lines) + ('\n' if lines else '')
+
+    # === 6c. Endpoint (function-first canonical form) ===
+    # An endpoint is a small wrapper that exposes the program's "entry point"
+    # with a flat, primitive-typed signature:
+    #     def endpoint(...primitive args...) -> T: return ...
+    # It's chosen at reset time so body generation can be steered toward
+    # making the endpoint's underlying fn/method non-trivial.
+    _PRIMITIVE_TYPES = {'int', 'str', 'list'}
+
+    def _make_endpoint_plan():
+        # Pick the endpoint kind. 'none' means no endpoint emitted.
+        mode = endpoint_mode
+        if mode == 'auto':
+            mode = 'method' if (include_classes and n_classes > 0) else 'f0'
+        if mode == 'none' or not emit_endpoint:
+            return None
+        if mode == 'f0':
+            spec = S.defs.get('f0')
+            if not spec or any(t not in _PRIMITIVE_TYPES for t in spec['ptypes']):
+                return None
+            return {'kind': 'function', 'name': 'f0',
+                    'ptypes': list(spec['ptypes']), 'ret_t': spec['ret_t']}
+        if mode == 'method':
+            # Pick a (class, regular method) pair with primitive-typed attrs & params.
+            candidates = []
+            for cname, spec in S.defs.items():
+                if spec.get('kind') != 'class': continue
+                if any(t not in _PRIMITIVE_TYPES for t in spec['attrs'].values()): continue
+                for m in spec.get('methods', []):
+                    if m.get('is_dunder') or m.get('ret_t') not in _PRIMITIVE_TYPES: continue
+                    if any(t not in _PRIMITIVE_TYPES for t in m['ptypes']): continue
+                    candidates.append((cname, spec, m))
+            if not candidates: return None
+            cname, cspec, mspec = random.choice(candidates)
+            return {'kind': 'method',
+                    'class': cname, 'method': mspec['name'],
+                    'attrs': dict(cspec['attrs']),
+                    'mparams': list(mspec['params']),
+                    'mptypes': list(mspec['ptypes']),
+                    'ret_t': mspec['ret_t']}
+        return None
+
+    def _endpoint_target_marker():
+        """Return a string identifying which fn/method the current endpoint
+        wraps — used to apply non-triviality steering to that body only.
+        Format: 'fn:f0' or 'method:C1.m0' or None."""
+        ep = S.aux.get('endpoint_plan')
+        if not ep: return None
+        if ep['kind'] == 'function': return f"fn:{ep['name']}"
+        if ep['kind'] == 'method':   return f"method:{ep['class']}.{ep['method']}"
+        return None
+
+    def _validated_endpoint_plan():
+        """Re-validate the endpoint plan against actually-rendered defs.
+        Class methods can be pruned during rendering (recursive METHODS
+        producing fewer than planned), so we may need to retarget."""
+        ep = S.aux.get('endpoint_plan')
+        if not ep: return None
+        if ep['kind'] == 'function':
+            return ep if ep['name'] in S.defs else None
+        # method: check class exists, method still present after pruning
+        cspec = S.defs.get(ep['class'])
+        if not cspec or cspec.get('kind') != 'class': return None
+        methods = cspec.get('methods', [])
+        if any(m['name'] == ep['method'] for m in methods):
+            return ep
+        # Method was pruned — pick any remaining int-returning regular method.
+        alts = [m for m in methods if not m.get('is_dunder')
+                and m.get('ret_t') == ep['ret_t']
+                and all(t in _PRIMITIVE_TYPES for t in m['ptypes'])]
+        if not alts: return None
+        m = random.choice(alts)
+        return {**ep, 'method': m['name'],
+                'mparams': list(m['params']), 'mptypes': list(m['ptypes'])}
+
+    def render_endpoint_def(ctx):
+        """Emit `def <endpoint_name>(...): ...` that calls the planned target."""
+        ep = _validated_endpoint_plan()
+        if not ep or not emit_endpoint: return ''
+        if ep['kind'] == 'function':
+            ann = lambda t: f": {t}" if type_hints else ''
+            params = [f"x{i}{ann(t)}" for i, t in enumerate(ep['ptypes'])]
+            call_args = ', '.join(f"x{i}" for i in range(len(ep['ptypes'])))
+            ret_ann = f" -> {ep['ret_t']}" if type_hints else ''
+            return (f"def {endpoint_name}({', '.join(params)}){ret_ann}:\n"
+                    f"    return {ep['name']}({call_args})\n")
+        # method
+        ann = lambda t: f": {t}" if type_hints else ''
+        attr_names = list(ep['attrs'].keys())
+        attr_types = [ep['attrs'][a] for a in attr_names]
+        # Method params may collide with attr names — rename them with suffix.
+        used = set(attr_names)
+        m_params = []
+        for p, _t in zip(ep['mparams'], ep['mptypes']):
+            q = p if p not in used else f"{p}_"
+            while q in used: q += '_'
+            m_params.append(q); used.add(q)
+        sig_parts  = ([f"{a}{ann(t)}" for a, t in zip(attr_names, attr_types)] +
+                      [f"{q}{ann(t)}" for q, t in zip(m_params, ep['mptypes'])])
+        ctor_args  = ', '.join(attr_names)
+        meth_args  = ', '.join(m_params)
+        ret_ann    = f" -> {ep['ret_t']}" if type_hints else ''
+        return (f"def {endpoint_name}({', '.join(sig_parts)}){ret_ann}:\n"
+                f"    obj = {ep['class']}({ctor_args})\n"
+                f"    return obj.{ep['method']}({meth_args})\n")
+
+    def render_endpoint_call(ctx):
+        """Emit the trailer that invokes the entry point.
+        Routes to (a) endpoint wrapper when emit_endpoint and plan is valid,
+        else (b) legacy `_result = f0(...)` when emit_result is set,
+        else (c) nothing."""
+        ep = _validated_endpoint_plan()
+        if emit_endpoint and ep:
+            if ep['kind'] == 'function':
+                types = ep['ptypes']
+            else:
+                types = list(ep['attrs'].values()) + list(ep['mptypes'])
+            args = ', '.join(_arg_of_type(t) for t in types)
+            call = f"{endpoint_name}({args})"
+        elif emit_result:
+            f0 = S.defs.get('f0')
+            if not f0: return ''
+            args = ', '.join(_arg_of_type(t) for t in f0['ptypes'])
+            call = f"f0({args})"
+        else:
+            return ''
+        if emit_result and print_result: return f"_result = {call}\nprint(_result)\n"
+        if emit_result:                  return f"_result = {call}\n"
+        if print_result:                 return f"print({call})\n"
+        return ''
 
     # ============ 7. Grammar rules ============
     R('CTX', '')
@@ -836,27 +989,33 @@ def pygram_grammar(
         if spec is None: return get_atom(ctx)
         return f"f0({', '.join(_arg_of_type(t) for t in spec['ptypes'])})"
     R('MAIN_CALL(CTX)', render_main_call)
+    # Legacy fallback for program mode (`mode='program'`). The canonical
+    # function-first path now goes through ENDPOINT_DEF + ENDPOINT_CALL.
     if n_functions > 0:
-        # Bind the result to `_result` so downstream metric tools can capture it
-        # (matches the convention used by reasoning-core's add_entry_call).
         R('FINAL_STMT(MAIN_CALL)',
-          (lambda c: f"_result = {c.render('py')}\nprint(_result)\n") if include_print
-          else (lambda c: f"_result = {c.render('py')}\n"))
+          (lambda c: f"print({c.render('py')})\n") if include_print
+          else (lambda c: f"{c.render('py')}\n"))
     elif include_print:
         R('FINAL_STMT(TOP_DISP)', '0')
     else:
         R('FINAL_STMT(TOP_EXPR)', '0')
 
+    # Endpoint rules
+    R('ENDPOINT_DEF(CTX)',  render_endpoint_def)
+    R('ENDPOINT_CALL(CTX)', render_endpoint_call)
+
     # === 10. Entry point ===
     if mode == 'function':
         prog_args = ['FUNC_DEF'] * max(1, n_functions)
         if include_classes and n_classes > 0:
-            # INSTANCE_USE already exercises the program at runtime via
-            # `print(obj.method(…))`. Adding a separate f0 call with literal
-            # args here regresses runnability for marginal capture benefit.
-            prog_args = prog_args + ['CLASS_DEF'] * n_classes + ['INSTANCE_USE']
-        elif n_functions > 0:   # function-only mode: bind `_result = f0(args)` for capture
-            prog_args.append('FINAL_STMT')
+            prog_args = prog_args + ['CLASS_DEF'] * n_classes
+            if include_instance_use:    # legacy script-style trailer
+                prog_args.append('INSTANCE_USE')
+        # ENDPOINT_DEF (if requested) + ENDPOINT_CALL slot (always present so
+        # legacy _result = f0(...) path can fire when emit_endpoint=False but
+        # emit_result=True). The renderers return '' when nothing to emit.
+        if emit_endpoint: prog_args.append('ENDPOINT_DEF')
+        prog_args.append('ENDPOINT_CALL')
     else:
         needs_fb = n_functions > 0 and 'int' not in param_types
         eff_inits = max(n_outer_inits, 2 if needs_fb else n_outer_inits)
