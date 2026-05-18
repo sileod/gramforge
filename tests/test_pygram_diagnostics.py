@@ -117,9 +117,14 @@ class PygramTrivialityTest(unittest.TestCase):
     identity-return frequency."""
 
     def test_triviality_rate_controls_identity_returns(self):
+        # Endpoint targets get triviality_override=0, so we can't test the
+        # knob on the endpoint's wrapped function. Disable endpoint and use
+        # the legacy `_result = f0(args)` trailer to make returned_input
+        # observable for f0 directly.
         results = {}
         for rate in [0.0, 1.0]:
-            kw = dict(n_functions=2, failure_rate=0.0, triviality_rate=rate)
+            kw = dict(n_functions=2, failure_rate=0.0, triviality_rate=rate,
+                      emit_endpoint=False, emit_result=True, print_result=True)
             s = _stats(_gen_and_analyze(kw)[0])
             results[rate] = s['returned_input']
         # At triviality_rate=1 we EXPECT identity returns; at 0 we expect few.
