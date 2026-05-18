@@ -18,9 +18,7 @@ class EnglishGrammarQualityTest(unittest.TestCase):
         grammar = simple_english_grammar(cap=6, questions=True)
         vowel_starts = ('artist', 'engineer', 'open', 'honest', 'odd')
         consonant_starts = ('cat', 'dog', 'scientist', 'student', 'teacher', 'friend', 'happy', 'sad', 'kind', 'quiet', 'brave', 'curious', 'friendly')
-        # The pronoun must be at end of phrase (not followed by a noun, since
-        # "her"/"its"/"their" may also act as a possessive determiner now).
-        locative_pronoun_pp = re.compile(r'\b(in|on|under) (him|her|it|them|us)(?!\s+\w)')
+        locative_pronoun_pp = re.compile(r'\b(in|on|under) (him|her|it|them|us)\b')
 
         for seed in range(400):
             sentence = generate(grammar.start(), depth=8, min_depth=6, seed=10_000 + seed) @ 'eng'
