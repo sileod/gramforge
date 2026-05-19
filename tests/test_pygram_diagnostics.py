@@ -16,19 +16,24 @@ import unittest
 
 from gramforge import generate
 from gramforge.grammars.pygram import pygram_grammar
-from gramforge.python_code_metrics import analyze, summarize
+from gramforge.metrics.python_code import analyze, summarize
 
 N_SAMPLES = 30   # per config
 DEPTH = 14
 
 
 def _gen_and_analyze(kw, n=N_SAMPLES, depth=DEPTH):
-    """Generate n samples + analyze each. Returns (reports, generation_time_s)."""
+    """Generate n samples + analyze each. Returns (reports, generation_time_s).
+
+    The canonical default emits only `def endpoint(...): ...` with no runtime
+    trailer; we set emit_result=True here so analysis actually executes the
+    endpoint (the diagnostic test goal is to measure runtime behavior)."""
+    kw = {'emit_result': True, **kw}    # caller can override
     reports, t0 = [], time.perf_counter()
     for seed in range(n):
         g = pygram_grammar(**kw)
         code = generate(g, seed=seed, max_depth=depth) @ 'py'
-        reports.append((code, analyze(code)))
+        reports.append((code, analyze(code, entry='endpoint')))
     return reports, time.perf_counter() - t0
 
 
@@ -116,21 +121,36 @@ class PygramTrivialityTest(unittest.TestCase):
     """triviality_rate should produce a measurable gradient of bare-return /
     identity-return frequency."""
 
-    def test_triviality_rate_controls_identity_returns(self):
+    def test_triviality_rate_controls_bare_returns(self):
+        # triviality_rate biases the *return value* of each function body
+        # (compound vs bare). The endpoint target is forced compound; the
+        # knob's effect shows up on NON-endpoint functions. Count `return X`
+        # where X is a single Name node, across all non-endpoint defs.
+        def count_bare_name_returns(code):
+            import ast
+            try: tree = ast.parse(code)
+            except SyntaxError: return 0
+            n = 0
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.FunctionDef): continue
+                if node.name in ('__init__', 'endpoint'): continue
+                for s in node.body:
+                    if isinstance(s, ast.Return) and isinstance(s.value, ast.Name):
+                        n += 1; break
+            return n
+
         results = {}
         for rate in [0.0, 1.0]:
-            kw = dict(n_functions=2, failure_rate=0.0, triviality_rate=rate)
-            s = _stats(_gen_and_analyze(kw)[0])
-            results[rate] = s['returned_input']
-        # At triviality_rate=1 we EXPECT identity returns; at 0 we expect few.
+            kw = dict(n_functions=3, failure_rate=0.0, triviality_rate=rate)
+            reports, _ = _gen_and_analyze(kw)
+            results[rate] = sum(count_bare_name_returns(code) for code, _ in reports)
         self.assertGreater(results[1.0], results[0.0],
-            f"triviality_rate has no effect: {results}")
-        self.assertLessEqual(results[0.0] / N_SAMPLES, 0.20,
-            f"triviality_rate=0 should yield <=20% identity returns, "
-            f"got {results[0.0]}/{N_SAMPLES}")
-        # The gap is the real signal — should be at least 3x
-        self.assertGreater(results[1.0], 3 * results[0.0] + 1,
-            f"triviality_rate gradient too weak: {results}")
+            f"triviality_rate has no effect on bare returns: {results}")
+        # At rate=0, near zero; at rate=1, a meaningful fraction.
+        self.assertLessEqual(results[0.0] / (3 * N_SAMPLES), 0.20,
+            f"rate=0 should have <=20% bare returns; got {results[0.0]}/{3*N_SAMPLES}")
+        self.assertGreater(results[1.0], 2 * results[0.0] + 2,
+            f"gradient too weak: {results}")
 
     def test_ast_trivial_defs_are_sparse(self):
         """AST-trivial (return-name-or-const only) bodies should be rare."""

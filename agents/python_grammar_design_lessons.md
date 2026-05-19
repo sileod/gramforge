@@ -29,7 +29,7 @@ not declarative rules.
 ## The six primitives that recur in every code grammar
 
 If you start a new code grammar, expect to reinvent these. We extracted
-them to `gramforge/codegen_utils.py`:
+them to `gramforge/codegen_utils/`:
 
 1. **`Scope`** — typed name bindings with `all[t] ⊇ safe[t]` distinction.
    `safe[t]` is the definitely-assigned subset (top-level of function body,
@@ -149,7 +149,7 @@ without unlocking distinct behavior.
 Per-seed pass/fail is fine but blind. We get more from **aggregate
 diagnostic tests** that:
 - Generate N=30+ samples per config
-- Compute summary stats with `python_code_metrics.summarize()`
+- Compute summary stats with `gramforge.metrics.python_code.summarize()`
 - Assert thresholds on `runnable`, `returned_input`, `steps_median`,
   `work_median`, `loc_median`, generation throughput
 
@@ -159,7 +159,7 @@ This composes all the quality dimensions into one number.
 
 ## Metrics that are worth computing
 
-In `gramforge/python_code_metrics.py`, the `ExecutionReport` dataclass
+In `gramforge/metrics/python_code.py`, the `ExecutionReport` dataclass
 has fields that earn their keep:
 
 - `loc` — static size, sanity-check upper/lower bounds
@@ -194,8 +194,8 @@ We refactored pygram entirely without touching `generate_sequential.py` or
 
 ## File organization
 
-- `gramforge/codegen_utils.py` — primitives reusable across code grammars
-- `gramforge/python_code_metrics.py` — Python-specific analysis (rename
+- `gramforge/codegen_utils/` — primitives reusable across code grammars
+- `gramforge/metrics/python_code.py` — Python-specific analysis (rename
   this for a different target language: `gramforge/js_code_metrics.py`,
   etc.). Aim for field-name overlap with downstream consumers'
   `ExecutionResult` dataclass if one exists.
@@ -213,5 +213,5 @@ depth bounding + weighted choice imperatively would cost 100+ lines.
 But the **semantic layer** (which var, what type, whether to recurse)
 is 100% imperative inside render lambdas. The "declarative grammar"
 framing is half-fiction here. Accept it; don't try to make semantics
-declarative. The primitives in `codegen_utils.py` just *name* the
+declarative. The primitives in `gramforge.codegen_utils` just *name* the
 imperative patterns so each grammar isn't reinventing them.
