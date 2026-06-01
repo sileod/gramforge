@@ -242,8 +242,8 @@ def FOL_grammar(
     
     R('property(adjective)','0(?)','is 0')
     
-    R('property(sentiment,outside_entity)', '~0(1,?)','does not 0 1',weight=0.5)
-    R('property(sentiment,outside_entity)', '~0(?,1)','is not 0d by 1',weight=0.5)
+    R('property(sentiment,outside_entity)', '~0(?,1)','does not 0 1',weight=0.5)
+    R('property(sentiment,outside_entity)', '~0(1,?)','is not 0d by 1',weight=0.5)
     # /negations
     
     R('term(entity,entity,adjective,adjective)','(2(0))&(3(1))','0 and 1 are respectively 2 and 3',
@@ -251,8 +251,8 @@ def FOL_grammar(
     
 
     R("sentiment", "like"), R("sentiment", "hate")
-    R('property(sentiment,outside_entity)', '0(1,?)','0s 1',weight=0.25)
-    R('property(sentiment,outside_entity)', '0(?,1)','is 0d by 1',weight=0.25)
+    R('property(sentiment,outside_entity)', '0(?,1)','0s 1',weight=0.25)
+    R('property(sentiment,outside_entity)', '0(1,?)','is 0d by 1',weight=0.25)
     R('term(entity,outside_entity,sentiment)','(2(0,1) & 2(1,0))', '0 and 1 2 each other')
     R('term(outside_entity,entity,sentiment)','(2(0,1) & 2(1,0))', '0 and 1 2 each other')
     
