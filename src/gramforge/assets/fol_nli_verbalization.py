@@ -16,6 +16,9 @@ def negate_predicate(predicate):
     for key, val in replacements.items():
         if predicate.startswith(key):
             return predicate.replace(key, val, 1)
+
+    if predicate.endswith((" marked", " tagged")):
+        return "is not " + predicate
     
     words = predicate.split(" ")
     if words[0].endswith("s"):
@@ -52,55 +55,10 @@ neg_short_propositions = [
 ]
 
 predicates = [
-    "is a client of Meta", "is a client of Costco", "is a client of LVMH", "uses an ios phone",
-    "owns an Android phone", "owns a smart tv", "watches fantasy movies",
-    "reads mystery novels", "writes a travel blog", "practices digital art",
-    "enjoys virtual reality gaming", "is a drone photographer", "enjoys making ceramics", "enjoys watercolor painting", "practices graffiti art",
-    "writes poetry", "practices calligraphy", "enjoys landscape photography", "enjoys macrame", "enjoys origami",
-    "can play the piano", "can play the guitar",
-    "can play the harmonica", "can play the flute", "plays the drums", "plays the violin", "enjoys salsa dancing", "does enjoy trail running",
-    "does enjoy mountain biking", "enjoys snowboarding", "enjoys spelunking", "enjoys cross-country skiing",
-    "enjoys stand-up paddleboarding", "enjoys windsurfing", "practices pilates",
-    "practices tai chi", "practices zumba", "practices archery", "practices kickboxing",
-    "enjoys skydiving", "collects foreign coins", "collects vintage stamps", "collects modern art",
-    "collects vintage vinyl records", "collects action figures", "collects antique clocks",
-    "collects rare sneakers", "collects antique jewelry", "collects luxury watches", "collects vintage maps",
-    "collects classic novels", "collects comic books", "enjoys fishing", "enjoys naked-eye stargazing",
-    "practices urban gardening", "enjoys bonsai cultivation", "owns a microscope",
-    "works on fridays", "drives a hybrid car", "has a pet dog", "is right-handed", "is a night owl", "uses contact lenses",
-    "has a tattoo", "has a piercing", "travels domestically frequently", "is allergic to anything",
-    "has lived in exactly three countries", "knows morse code", "makes homemade flans", "bakes bread at home",
-    "is a tea enthusiast", "is a coffee connoisseur", "is a scotch connoisseur", "is a craft beer aficionado", "has a saltwater aquarium", "builds model airplanes", "owns a very old television",
-    "enjoys logic puzzles", "uses a Windows laptop", "is a Linux enthusiast", "is a cybersecurity expert",
-    "enjoys coding in Python", "streams on Twitch", "owns a smartwatch", "owns a 3D printer",
-    "plays eSports competitively", "develops open-source software projects in their free time", "frequently participates in hackathons and coding competitions",
-    "owns a high-end gaming PC with custom-built components", "regularly contributes to tech forums and online communities",
-    "is an active member of a local robotics club", "creates augmented reality experiences for mobile applications",
-    "works as a freelance web developer specializing in e-commerce sites", "hosts a popular podcast about emerging technologies",
-    "maintains a personal blog focused on cybersecurity tips", "is a dedicated advocate for digital privacy and encryption",
-    "creates large-scale murals for public art installations", "writes and illustrates their own graphic novels",
-    "composes and performs experimental electronic music", "hosts regular workshops on creative writing",
-    "is a member of a local theater group specializing in improv", "designs and sews custom cosplay costumes for conventions",
-    "makes intricate hand-cut paper art for exhibitions", "hosts a YouTube channel dedicated to art tutorials",
-    "creates bespoke furniture pieces from reclaimed wood", "is a professional photographer specializing in portrait photography",
-    "trains for and competes in international triathlons", "is a certified yoga instructor teaching classes weekly",
-    "plays as a goalkeeper for a local amateur soccer team", "participates in long-distance cycling events across the country",
-    "is an avid mountain climber who has scaled several peaks", "mentors a youth basketball team on weekends",
-    "competes in national level swimming championships", "practices and performs acrobatic dance routines",
-    "enjoys white-water rafting",
-    "collects rare and antique scientific instruments", "has a vast collection of first-edition science fiction novels",
-    "owns an extensive assortment of vintage comic book memorabilia", "is passionate about collecting and restoring classic cars",
-    "has a curated collection of mid-century modern furniture",
-    "collects historical artifacts related to ancient civilizations", "owns a significant collection of rare gemstones and minerals",
-    "is an avid collector of autographed memorabilia from famous musicians", "has a specialized collection of handmade artisan pottery",
-    "is an enthusiastic bird watcher who travels for rare sightings", "maintains a large, organic vegetable garden year-round",
-    "volunteers for local environmental conservation projects",
-    "enjoys kayaking and exploring remote waterways", "is a certified scuba diver with advanced underwater photography skills",
-    "participates in citizen science projects related to wildlife monitoring", "is an expert in identifying and foraging wild edible plants",
-    "enjoys camping and organizing outdoor survival workshops", "is dedicated to sustainable living and zero-waste practices",
-    "is a culinary enthusiast who experiments with international cuisines", "hosts themed dinner parties featuring gourmet home-cooked meals",
-    "is a wine connoisseur with a private cellar of vintage wines", "is a dedicated volunteer for local community service projects",
-    "enjoys writing detailed reviews of new and classic board games", "is a chess master who participates in national tournaments",
-    "hosts regular game nights featuring complex strategy games", "is an amateur astronomer who builds and uses custom telescopes",
-    "writes in-depth travel guides for off-the-beaten-path destinations"
+    "alpha tagged", "bravo tagged", "charlie tagged", "delta tagged", "echo tagged",
+    "foxtrot tagged", "golf tagged", "hotel tagged", "india tagged", "juliet tagged",
+    "kilo tagged", "lima tagged", "mike tagged", "november tagged", "oscar tagged",
+    "papa tagged", "quebec tagged", "romeo tagged", "sierra tagged", "tango tagged",
+    "uniform tagged", "victor tagged", "whiskey tagged", "xray tagged", "yankee tagged",
+    "zulu tagged",
 ]
