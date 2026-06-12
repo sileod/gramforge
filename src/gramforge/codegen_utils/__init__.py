@@ -1,6 +1,6 @@
 """Utilities for building code-like grammars (not a grammar itself).
 
-These factor the patterns that recur across `tinypy.py`, `pygram.py`, and any
+These factor the patterns that recur across `tinypy.py`, `mesopy.py`, and any
 future code grammar (JavaScript, Rust, OOP languages, …):
 
   - lexical scoping (push/pop scope stack on function/class/method entry)

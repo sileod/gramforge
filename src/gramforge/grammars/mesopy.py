@@ -1,4 +1,4 @@
-"""pygram — procedural Python generator for LLM training data.
+"""mesopy — procedural Python generator for LLM training data.
 
 Purpose: synthesize many small Python programs (functions, classes, instance
 use) with knobs to *steer* their properties:
@@ -33,7 +33,7 @@ from .. import Substitution, Constraint, generate, init_grammar
 from ..codegen_utils import CodeState, Scope, pick_var, gated, render_block
 
 
-def pygram_grammar(
+def mesopy_grammar(
     max_number=16,
     # --- mode & structure ----------------------
     mode='function',            # 'program' = full script; 'function' = just defs

@@ -1,6 +1,6 @@
 from .FOL import FOL_grammar
 from .tinypy import tinypy_grammar
-from .pygram import pygram_grammar
+from .mesopy import mesopy_grammar
 from .english import simple_english_grammar
 from ..grammar import init_grammar
 import random
@@ -86,7 +86,7 @@ dyck_grammar.name = 'dyck'
 simple_english_grammar.name = 'english'
 regex_grammar.name = 'regex'
 tinypy_grammar.name = 'tinypy'
-pygram_grammar.name = 'pygram'
+mesopy_grammar.name = 'mesopy'
 
 GRAMMAR_FACTORIES = (
     FOL_grammar,
@@ -95,7 +95,7 @@ GRAMMAR_FACTORIES = (
     simple_english_grammar,
     regex_grammar,
     tinypy_grammar,
-    pygram_grammar,
+    mesopy_grammar,
 )
 
 

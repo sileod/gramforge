@@ -1,6 +1,6 @@
-"""Diagnostic tests for pygram_grammar — non-regression + steering signal.
+"""Diagnostic tests for mesopy_grammar — non-regression + steering signal.
 
-Unlike test_pygram_quality which asserts pass/fail per seed, these tests
+Unlike test_mesopy_quality which asserts pass/fail per seed, these tests
 aggregate metrics across N samples per config and assert thresholds. The
 goals:
   - Catch behavioral regressions (runnability, triviality, complexity drift)
@@ -15,7 +15,7 @@ import time
 import unittest
 
 from gramforge import generate
-from gramforge.grammars.pygram import pygram_grammar
+from gramforge.grammars.mesopy import mesopy_grammar
 from gramforge.metrics.python_code import analyze, summarize
 
 N_SAMPLES = 30   # per config
@@ -31,7 +31,7 @@ def _gen_and_analyze(kw, n=N_SAMPLES, depth=DEPTH):
     kw = {'emit_result': True, **kw}    # caller can override
     reports, t0 = [], time.perf_counter()
     for seed in range(n):
-        g = pygram_grammar(**kw)
+        g = mesopy_grammar(**kw)
         code = generate(g, seed=seed, max_depth=depth) @ 'py'
         reports.append((code, analyze(code, entry='endpoint')))
     return reports, time.perf_counter() - t0
@@ -47,7 +47,7 @@ def _stats(reports):
     return s
 
 
-class PygramSpeedTest(unittest.TestCase):
+class MesopySpeedTest(unittest.TestCase):
     """Generation throughput, including a 'per useful sample' figure that
     captures the rate of runnable AND non-trivial output."""
 
@@ -70,7 +70,7 @@ class PygramSpeedTest(unittest.TestCase):
             f"(only {useful}/{N_SAMPLES} were valid+non-trivial)")
 
 
-class PygramSyntaxTest(unittest.TestCase):
+class MesopySyntaxTest(unittest.TestCase):
     """Parsability ceiling. Generated code must always parse as valid Python."""
 
     def test_all_configs_parse(self):
@@ -90,7 +90,7 @@ class PygramSyntaxTest(unittest.TestCase):
                 f"{label}: only {s['parsed']}/{N_SAMPLES} parsed")
 
 
-class PygramRunnabilityTest(unittest.TestCase):
+class MesopyRunnabilityTest(unittest.TestCase):
     """Runnability floors at known-safe configurations."""
 
     def test_safe_function_only_runs(self):
@@ -117,7 +117,7 @@ class PygramRunnabilityTest(unittest.TestCase):
                 f"{kw}: {s['timed_out']} timeouts (should be 0 at failure_rate=0)")
 
 
-class PygramTrivialityTest(unittest.TestCase):
+class MesopyTrivialityTest(unittest.TestCase):
     """triviality_rate should produce a measurable gradient of bare-return /
     identity-return frequency."""
 
@@ -162,7 +162,7 @@ class PygramTrivialityTest(unittest.TestCase):
             f"AST-trivial defs/sample = {s['trivial_defs_avg']:.2f} (should be <1)")
 
 
-class PygramComplexityTest(unittest.TestCase):
+class MesopyComplexityTest(unittest.TestCase):
     """Generated code should do *real* computational work, not be a 50-LOC
     return-input wrapper. The metric is runtime step count."""
 
@@ -189,7 +189,7 @@ class PygramComplexityTest(unittest.TestCase):
             f"loc_median = {s['loc_median']} (too large — output bloated)")
 
 
-class PygramDashboardTest(unittest.TestCase):
+class MesopyDashboardTest(unittest.TestCase):
     """Always-printing diagnostic — not asserting anything, just dumping the
     current numbers to stdout so a maintainer can see drift at a glance.
     Run with `pytest -s` to see output."""

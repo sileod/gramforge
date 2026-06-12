@@ -1,6 +1,6 @@
 """Metrics for generated Python code.
 
-Pairs with grammars like `pygram` that produce executable Python: lets you
+Pairs with grammars like `mesopy` that produce executable Python: lets you
 filter/score samples by static shape AND runtime behavior.
 
 Usage:

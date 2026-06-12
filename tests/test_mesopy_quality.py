@@ -1,4 +1,4 @@
-"""Quality tests for pygram_grammar.
+"""Quality tests for mesopy_grammar.
 
 Tests cover:
 - Syntactic correctness (ast.parse) — always required
@@ -15,7 +15,7 @@ import sys
 import unittest
 
 from gramforge import generate
-from gramforge.grammars.pygram import pygram_grammar
+from gramforge.grammars.mesopy import mesopy_grammar
 
 SEEDS = range(30)
 DEPTH = 10
@@ -38,7 +38,7 @@ def _run_seed(kw, seed):
     # emit_result=True ensures the endpoint actually runs (canonical default
     # is just the def; we want to verify runtime correctness here).
     kw = {'n_functions': 2, 'emit_result': True, **kw}   # caller can override
-    g = pygram_grammar(**kw)
+    g = mesopy_grammar(**kw)
     code = generate(g, seed=seed, max_depth=DEPTH) @ 'py'
     try:
         ast.parse(code)
@@ -81,12 +81,12 @@ def _run_seed(kw, seed):
         sys.setrecursionlimit(orig_limit)
 
 
-class PygramSyntaxTest(unittest.TestCase):
+class MesopySyntaxTest(unittest.TestCase):
     """Generated code must always parse as valid Python."""
 
     def _check_syntax(self, kw):
         for seed in SEEDS:
-            g = pygram_grammar(n_functions=2, **kw)
+            g = mesopy_grammar(n_functions=2, **kw)
             code = generate(g, seed=seed, max_depth=DEPTH) @ 'py'
             try:
                 ast.parse(code)
@@ -118,7 +118,7 @@ class PygramSyntaxTest(unittest.TestCase):
         ))
 
 
-class PygramRunnabilityTest(unittest.TestCase):
+class MesopyRunnabilityTest(unittest.TestCase):
     """Most generated functions should be runnable."""
 
     def _check_runnability(self, kw, min_ok_ratio, forbid=None):
@@ -181,13 +181,13 @@ class PygramRunnabilityTest(unittest.TestCase):
                 )
 
 
-class PygramVarietyTest(unittest.TestCase):
+class MesopyVarietyTest(unittest.TestCase):
     """Grammar should produce diverse constructs."""
 
     def _collect_patterns(self, kw, n=50):
         patterns = collections.Counter()
         for seed in range(n):
-            g = pygram_grammar(n_functions=2, **kw)
+            g = mesopy_grammar(n_functions=2, **kw)
             code = generate(g, seed=seed, max_depth=DEPTH) @ 'py'
             if 'while ' in code:    patterns['while'] += 1
             if 'for '   in code:    patterns['for'] += 1
@@ -219,7 +219,7 @@ class PygramVarietyTest(unittest.TestCase):
                   include_ternary=False, include_fstrings=False,
                   include_comprehensions=False, include_swap=False)
         for seed in range(20):
-            g = pygram_grammar(n_functions=2, **kw)
+            g = mesopy_grammar(n_functions=2, **kw)
             code = generate(g, seed=seed, max_depth=DEPTH) @ 'py'
             self.assertNotIn('while ', code, f"while appeared despite include_loops=False")
             self.assertNotIn('for ', code, f"for appeared despite include_loops=False")
@@ -227,7 +227,7 @@ class PygramVarietyTest(unittest.TestCase):
             self.assertNotIn('assert ', code, f"assert appeared despite include_assert=False")
 
 
-class PygramClassesTest(unittest.TestCase):
+class MesopyClassesTest(unittest.TestCase):
     """include_classes=True generates class defs + instance use; self.X resolves."""
 
     def test_classes_parse_and_run(self):

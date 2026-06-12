@@ -9,7 +9,11 @@ __pycache__/
 # Distribution / packaging
 dist/
 build/
+build-env-*/
 *.egg-info/
+
+# Local tool state
+.claude/
 
 # Logs and Databases
 *.log
