@@ -36,12 +36,13 @@ class FlatList(list):
         return result
 
 
-def Constraint(constraint_str):
+def Constraint(constraint_str, index=0):
     def generated_function(x):
-        conditions = constraint_str.split(',')
-        for cond in conditions:
+        for cond in constraint_str.split(','):
             i, j = map(int, cond.split('∉'))
-            if x[i].render('eng') in x[j].render('eng'):
+            if i >= len(x) or j >= len(x):
+                continue
+            if x[i] @ index in x[j] @ index:
                 return False
         return True
     return generated_function
