@@ -146,8 +146,6 @@ def FOL_grammar(
     
     R("term(term)", "0", "it is true that “0”",constraint=nesting_limit,weight=0.25)
     
-    
-    R("term(term)", "(mary_dream=>(0))", "Mary dreamt that “0”",constraint=nesting_limit,weight=0.15)    
 
     
     #R("block(term)", "0", "0",weight=1)

@@ -1,6 +1,6 @@
 # Grammar design lessons — for transfer to other gramforge grammars
 
-Distilled from building/refactoring `pygram`. Most of these generalize to
+Distilled from building/refactoring `mesopy`. Most of these generalize to
 any code-like grammar (JS, Rust, SQL, …); a few are Python-specific.
 
 ## What the framework gives you vs. what you must add yourself
@@ -48,7 +48,7 @@ them to `gramforge/codegen_utils/`:
    one nest level. The most-used helper.
 6. A failure-rate gate.
 
-These six cover everything pygram needed. Stick to this list; if you
+These six cover everything mesopy needed. Stick to this list; if you
 find yourself adding state to `S.aux` for grammar-specific tracking,
 that's correct — `aux` is the open dict for one-off needs (loop math,
 init values for var-reuse, etc.).
@@ -83,7 +83,7 @@ Even with the safe two-tier, vars declared in an `if` body leak into the
 `elif`/`else` condition lookup because the leaked var is in `all[t]`,
 and our picker relaxes to `all` when `safe` is empty.
 
-Fix (not yet applied in pygram — open issue): in `if_chain`, snapshot
+Fix (not yet applied in mesopy — open issue): in `if_chain`, snapshot
 `scope.all` on body entry, restore on exit. Vars assigned inside a
 branch don't escape.
 
@@ -189,7 +189,7 @@ won't survive C-level infinite loops or rogue I/O. Add a
 When you find yourself wanting a new `Rule.state` semantic or an
 `on_enter` hook, ask: does this generalize to the other grammars (English,
 FOL, tinypy)? If only your grammar needs it, build it in render lambdas.
-We refactored pygram entirely without touching `generate_sequential.py` or
+We refactored mesopy entirely without touching `generate_sequential.py` or
 `grammar.py`.
 
 ## File organization
