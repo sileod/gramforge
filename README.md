@@ -77,7 +77,7 @@ Generated expressions (`x.generate`) behave like anytree trees, fully exposing t
 Generating synthetic data requires complexity management. gramforge implements efficient management of min_depth and max_depth constraints, with a "bushiness" knob (default=0.7) preventing the generated expressions from generating "spikes" that just overfit the minimum depth requirement.
 
 ### Citation for the gramforge framework:
-```
+```bibtex
 @inproceedings{sileo-2024-scaling,
     title = "Scaling Synthetic Logical Reasoning Datasets with Context-Sensitive Declarative Grammars",
     author = "Sileo, Damien",
