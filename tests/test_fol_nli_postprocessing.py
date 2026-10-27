@@ -19,7 +19,7 @@ def test_dependence_checks_theory_without_premises(hypothesis, label, expected):
 
 
 def pool(tmp_path):
-    group = {'index': 0, 'background': [], 'clauses': [{'id':'p0', 'formula':'~q', 'english':'q is false'}],
+    group = {'index': 0, 'background': [], 'clauses': [{'id':'p0', 'formula':'~q&r', 'english':'q is false and r is true'}],
              'name_lexicon': {}, 'mentioned_names': [], 'lexicon': {}, 'proposition_lexicon': {},
              'rule_concentration': 0, 'outcomes': []}
     for formula in ['p<~>p', 'q']:
@@ -45,6 +45,23 @@ def test_unknown_dependency_never_passes_curation(tmp_path, monkeypatch):
     rows, rejected = candidates(pool(tmp_path), 24, 5000, 42)
     assert rows == []
     assert rejected['premise_unresolved'] == 2
+
+
+def test_opposite_query_cannot_reintroduce_whole_premise_copy(tmp_path):
+    root = pool(tmp_path)
+    path = root / 'groups/00000000.json.gz'
+    with gzip.open(path, 'rt') as file:
+        group = json.load(file)
+    group['clauses'][0].update(formula='~q', english='q is false')
+    for formula, label in [('~(q)', 'entailment'), ('~(~(~q))', 'entailment')]:
+        group['outcomes'].append({'label':label, 'hypothesis':{'formula':formula, 'english':formula},
+                                  'proof_inputs':['p0'], 'proof_trace':['resolution'], 'proof_check':None})
+    with gzip.open(path, 'wt') as file:
+        json.dump(group, file)
+    rows, rejected = candidates(root, 24, 5000, 42)
+    assert rows == []
+    assert rejected['direct_premise_match'] == 3  # q and both equivalent ~q queries.
+    assert rejected['premise_independent'] == 1
 
 
 def test_setup_definitions_and_clause_count_do_not_reveal_proof_usage():

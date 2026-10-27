@@ -99,7 +99,10 @@ The pipeline implements:
    Group/progress counters report proof sources, supplement attempts and
    missing support, counting actual searches rather than cached opposite rows.
 4. Syntactic canonical deduplication with bound-variable normalization and
-   commutative operand ordering. This is not semantic-equivalence deduplication.
+   commutative operand ordering and double-negation elimination. Questions
+   directly stated by a whole premise, or its explicit opposite, are excluded
+   after both query polarities have been generated. This is not general
+   semantic-equivalence deduplication.
 5. A global 5,000-example proof-trace cap, seeded traversal before applying the
    cap, and explicit exclusion of premise-independent nonneutral questions.
    Each E/C query must have a Z3 countermodel under the background **without

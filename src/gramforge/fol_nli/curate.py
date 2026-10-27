@@ -30,6 +30,8 @@ LABELS = ['entailment', 'neutral', 'contradiction']
 def normalized(node, bound=None):
     bound = {} if bound is None else bound
     op = node[0]
+    if op == '~' and node[1][0] == '~':
+        return normalized(node[1][1], bound)
     if op in ('!', '?'):
         variables = {v: f'V{len(bound) + i}' for i, v in enumerate(node[1])}
         return [op, list(variables.values()), normalized(node[2], bound | variables)]
@@ -108,12 +110,17 @@ def candidates(pool, max_premises, trace_cap, seed):
             group = json.load(file)
         if 'error' in group:
             continue
+        statements = {digest(normalized(parse(c['formula']))) for c in group['clauses']}
         canonical_group = digest(sorted([normalized(parse(c['formula'])) for c in group['clauses']], key=str))
         for outcome in group['outcomes']:
             label = outcome['label']
             if label not in LABELS:
                 rejected[label] += 1; continue
             h = outcome['hypothesis']
+            # Both polarities must be checked: opposite-query generation can
+            # reintroduce a statement excluded before the polarity expansion.
+            if any(digest(normalized(parse(f))) in statements for f in [h['formula'], f'~({h["formula"]})']):
+                rejected['direct_premise_match'] += 1; continue
             dependency = None
             if label != 'neutral':
                 dependency = outcome.get('dependency_check') or premise_dependence(group['background'], h['formula'], label)
