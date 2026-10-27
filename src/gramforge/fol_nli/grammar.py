@@ -18,6 +18,40 @@ STEMS = {'has': 'have', 'enjoys': 'enjoy', 'owns': 'own', 'plays': 'play', 'coll
          'bakes': 'bake', 'knows': 'know', 'volunteers': 'volunteer'}
 
 
+def has_self_relation(formula):
+    """Sampling restriction on ground relations, not a logical irreflexivity axiom."""
+    return bool(re.search(r'\b[a-z]\w*\(\s*([a-z]\w*)\s*,\s*\1\s*\)', formula))
+
+
+def distinct_arguments(children):
+    families = {'entity': 'name', 'entity_': 'name', 'outside_entity': 'name',
+                'term': 'statement', 'nterm': 'statement',
+                'property': 'property', 'neg_property': 'property', 'xp': 'property'}
+    seen = set()
+    for child in children:
+        family = families.get(child.type)
+        if family is None:
+            continue
+        formula = re.sub(r'\s+', '', child @ 'tptp')
+        if '#' in formula:
+            continue  # Partial derivations must remain expandable.
+        # Remove redundant outer parentheses, preserving internal scope.
+        while formula.startswith('(') and formula.endswith(')'):
+            depth = 0
+            for index, char in enumerate(formula):
+                depth += (char == '(') - (char == ')')
+                if depth == 0:
+                    break
+            if index != len(formula) - 1:
+                break
+            formula = formula[1:-1]
+        key = family, formula
+        if key in seen:
+            return False
+        seen.add(key)
+    return True
+
+
 def negative(phrase):
     if '#' in phrase:
         return phrase
@@ -180,6 +214,14 @@ def make_grammar(n_premises=8, include_setup=True):
         R('property(state)', lambda node, finder=finder: reuse(node, 'tptp', finder),
           lambda node, finder=finder: reuse(node, 'eng', finder),
           state_constraint=lambda node: '#missing_context' not in (node @ 'tptp'), weight=weight)
+    # Apply in one profile-local place, including restored productions. These
+    # remove repeated operands/names, without deleting connective families or
+    # changing the background semantics of any relation.
+    for rule in R._instances:
+        if rule.name in {'term', 'property', 'cproperty', 'cond', 'list'}:
+            rule.constraint.append(distinct_arguments)
+        if rule.name == 'term':
+            rule.state_constraint.append(lambda node: not has_self_relation(node @ 'tptp'))
     return R
 
 

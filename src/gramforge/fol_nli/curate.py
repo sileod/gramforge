@@ -99,7 +99,8 @@ def candidates(pool, max_premises, trace_cap, seed):
                    'hypothesis_tptp': h['formula'], 'background': group['background'],
                    'clauses': selected, 'proof_inputs': sorted(support),
                    'proof_trace': outcome['proof_trace'], 'proof_trace_id': trace_id,
-                   'proof': outcome['proof_check']['output'] if outcome['proof_check'] else '',
+                   'proof': outcome.get('proof', outcome['proof_check']['output'] if outcome['proof_check'] else ''),
+                   'proof_source': outcome.get('proof_source', 'legacy'),
                    'rule_concentration': group['rule_concentration'],
                    'source_group': path.name, 'source_group_sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'source_index': group['index'],
                    'lexicon': group['lexicon'], 'name_lexicon': group['name_lexicon'], 'proposition_lexicon': group['proposition_lexicon']}

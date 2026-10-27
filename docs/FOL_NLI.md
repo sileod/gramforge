@@ -86,7 +86,12 @@ The pipeline implements:
 2. Same-concept hypothesis matching and context-derived questions, including
    named instantiations of generated properties.
 3. Native Vampire proof-input and inference-trace extraction. SAT-portfolio
-   proofs without useful inputs are supplemented with a proof-search run.
+   proofs with valid premise inputs and an inference trace are kept directly.
+   Only missing support triggers a supplementary proof-search run, with a
+   budget of at least ten seconds (five times the classification budget).
+   A failed supplement never erases the portfolio proof or changes its label.
+   Group/progress counters report proof sources, supplement attempts and
+   missing support, counting actual searches rather than cached opposite rows.
 4. Syntactic canonical deduplication with bound-variable normalization and
    commutative operand ordering. This is not semantic-equivalence deduplication.
 5. A global 5,000-example proof-trace cap and exclusion of proof-free nonneutral
@@ -118,6 +123,14 @@ backtracking checkpoints avoid rejecting most long blocks after one failed
 choice. Opposite hypotheses reuse exactly swapped satisfiability results,
 halving their duplicate solver work; they do not approximate the domain.
 Generation/labeling uses CPU processes and leaves GPU training separate.
+
+The profile rejects identical connective operands and repeated named entities
+within a statement. Ground self-relations are also excluded from premise and
+hypothesis sampling, including named instantiations of properties. These are
+sampling restrictions: they do not assert that sentiment or other relations
+are logically irreflexive, and quantified relational witnesses may coincide.
+All connective and relation production families remain available. This does
+not eliminate every tautology or contradiction obtainable through composition.
 
 `inspect` writes productivity, observed-rule, premise-length and proof-support
 reports. A manifest alone does not certify correctness. Only the final audit

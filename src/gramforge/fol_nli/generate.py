@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 from gramforge import generate
-from .grammar import make_grammar, background
+from .grammar import make_grammar, background, has_self_relation
 from .logic import parse, symbols
 
 
@@ -146,7 +146,7 @@ def make_group(seed, index, hypotheses=12):
         if any(c['formula'] == formula for c in clauses):
             continue
         candidates[formula] = {'formula': formula, 'english': node @ 'eng', 'derivation': trace(node)}
-    choices = sorted(candidates)
+    choices = sorted(formula for formula in candidates if not has_self_relation(formula))
     rng.shuffle(choices)
     # Opposite polarities provide paired, meaningful contradiction candidates.
     selected = []

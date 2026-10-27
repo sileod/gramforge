@@ -3,7 +3,6 @@ import hashlib
 import re
 import subprocess
 import tempfile
-from pathlib import Path
 
 
 def problem(background, clauses, hypothesis=None, negate=False):
@@ -40,11 +39,24 @@ def label(background, clauses, hypothesis, executable, seconds=2):
               ('Unsatisfiable', 'Unsatisfiable'): 'inconsistent'}
     verdict = labels.get(statuses, 'unresolved')
     proof = negative['output'] if verdict == 'entailment' else positive['output'] if verdict == 'contradiction' else ''
+    def extract(output):
+        inputs = sorted(set(re.findall(r'file\([^\n]*?,\s*(p\d+)\)', output)))
+        if not set(inputs) <= {c['id'] for c in clauses}:
+            return [], []
+        return inputs, re.findall(r'inference\((\w+)', output)
+    support, trace = extract(proof)
+    source = 'portfolio' if proof else None
     proof_check = None
-    if verdict in ('entailment', 'contradiction'):
-        proof_check = check(problem(background, clauses, hypothesis, negate=verdict == 'entailment'), executable, seconds, mode='vampire')
-        proof = proof_check['output'] if proof_check['status'] == 'Unsatisfiable' else ''
-    support = sorted(set(re.findall(r'file\([^\n]*?,\s*(p\d+)\)', proof)))
-    trace = re.findall(r'inference\((\w+)', proof)
+    if verdict in ('entailment', 'contradiction') and not (support and trace):
+        proof_check = check(problem(background, clauses, hypothesis, negate=verdict == 'entailment'),
+                            executable, max(10, 5 * seconds), mode='vampire')
+        if proof_check['status'] == 'Unsatisfiable':
+            supplemental_support, supplemental_trace = extract(proof_check['output'])
+            if supplemental_support and supplemental_trace:
+                proof = proof_check['output']
+                support, trace = supplemental_support, supplemental_trace
+                source = 'supplement'
     return {'label': verdict, 'positive': positive, 'negative': negative,
-            'proof_inputs': support, 'proof_trace': trace, 'proof_check': proof_check}
+            'proof_inputs': support, 'proof_trace': trace, 'proof_check': proof_check,
+            'proof': proof, 'proof_source': source,
+            'proof_support_missing': verdict in ('entailment', 'contradiction') and not (support and trace)}

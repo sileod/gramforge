@@ -57,6 +57,11 @@ def job(arguments):
                                       'cache_note': 'Exact opposite of preceding hypothesis; polarities swapped'}
                 else:
                     result = label(group['background'], group['clauses'], hypothesis['formula'], executable, seconds)
+                    if result['label'] in ('entailment', 'contradiction'):
+                        counts['proof_checks'] += 1
+                        counts['proof_source_' + (result['proof_source'] or 'unavailable')] += 1
+                        counts['proof_supplement_attempts'] += result['proof_check'] is not None
+                        counts['proof_support_missing'] += result['proof_support_missing']
                 previous = hypothesis['formula'], result
                 counts[result['label']] += 1
                 outcomes.append({'hypothesis': hypothesis, **result})

@@ -129,3 +129,31 @@ def test_generation_is_independent_of_previous_groups():
     # Logical symbols stay stable, while lexical names are sampled per group.
     assert first['name_lexicon']
     assert all('pred' + chr(97 + i) in first['lexicon'] for i in range(26))
+
+
+def test_identical_connective_operands_are_excluded(grammar):
+    from gramforge.fol_nli.grammar import distinct_arguments
+    left, right = prop(grammar), prop(grammar)
+    assert not distinct_arguments([left, right])
+    atom = node(grammar, 'atomic_predicate', formula='predb')
+    different = node(grammar, 'property(atomic_predicate)', atom, formula='{0}(?)')
+    assert distinct_arguments([left, different])
+    for rule in grammar._instances:
+        if rule.signature == 'property(property,property)':
+            sentence = FastProduction(rule=rule, children=[left, right])
+            assert not sentence.check()
+
+
+def test_repeated_entities_excluded_without_making_sentiment_irreflexive(grammar):
+    from gramforge.fol_nli.grammar import distinct_arguments, has_self_relation
+    mary = node(grammar, 'entity(entity_)', node(grammar, 'entity_', formula='mary'))
+    paul = node(grammar, 'entity(entity_)', node(grammar, 'entity_', formula='paul'))
+    assert not distinct_arguments([mary, mary])
+    assert distinct_arguments([mary, paul])
+    comparative = node(grammar, 'comparative', formula='quieter')
+    sentence = node(grammar, 'term(entity,comparative,entity)', mary, comparative, mary)
+    assert not sentence.check()
+    assert has_self_relation('~hate(mary,mary)')
+    assert not has_self_relation('hate(mary,paul)')
+    assert not has_self_relation('like(X,X)')
+    assert z3_check([*background(), 'like(mary,mary)']) == 'sat'
