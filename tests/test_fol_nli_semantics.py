@@ -157,3 +157,53 @@ def test_repeated_entities_excluded_without_making_sentiment_irreflexive(grammar
     assert not has_self_relation('hate(mary,paul)')
     assert not has_self_relation('like(X,X)')
     assert z3_check([*background(), 'like(mary,mary)']) == 'sat'
+
+
+@pytest.mark.parametrize('signature,symbol', [('prop','propositiona'), ('adjective','humble')])
+def test_duplicate_proposition_and_adjective_children_are_rejected(grammar, signature, symbol):
+    from gramforge.fol_nli.grammar import distinct_arguments
+    first = node(grammar, signature, formula=symbol)
+    second = node(grammar, signature, formula=symbol)
+    assert not distinct_arguments([first, second])
+
+
+def test_like_hate_requires_the_explicit_definition():
+    from gramforge.fol_nli.grammar import DEFINITIONS
+    theory = background(['mary', 'paul'])
+    facts = ['like(mary,paul)', 'hate(mary,paul)']
+    assert z3_check([*theory, *facts]) == 'sat'
+    definition = DEFINITIONS[0][1]
+    assert z3_check([*theory, *facts, definition]) == 'unsat'
+
+
+def test_generated_definition_is_a_visible_proof_addressable_premise():
+    from gramforge.fol_nli.generate import make_group
+    group = make_group(42, 1, hypotheses=2)
+    relation_occurs = any('like(' in c['formula'] or 'hate(' in c['formula'] for c in group['clauses'])
+    definitions = [c for c in group['clauses'] if c.get('role') == 'definition']
+    assert relation_occurs and len(definitions) == 1
+    definition = definitions[0]
+    assert definition['english'].startswith('Definition: For any people A and B')
+    assert definition['id'].startswith('p')
+    assert len({c['id'] for c in group['clauses']}) == len(group['clauses'])
+    assert definition['formula'] not in group['background']
+
+
+@pytest.mark.parametrize('likes,hates,expected', [
+    (False, False, 'sat'), (False, True, 'sat'),
+    (True, False, 'sat'), (True, True, 'unsat'),
+])
+def test_sentiment_definition_all_truth_cases(likes, hates, expected):
+    from gramforge.fol_nli.grammar import DEFINITIONS
+    facts = [('' if likes else '~') + 'like(mary,paul)',
+             ('' if hates else '~') + 'hate(mary,paul)']
+    assert z3_check([*background(['mary', 'paul']), DEFINITIONS[0][1], *facts]) == expected
+
+
+def test_sentiment_definition_is_not_reciprocal_and_covers_unnamed_self_pairs():
+    from gramforge.fol_nli.grammar import DEFINITIONS
+    theory = [*background(['mary', 'paul']), DEFINITIONS[0][1]]
+    assert z3_check([*theory, 'like(mary,paul)', 'hate(paul,mary)']) == 'sat'
+    assert z3_check([*theory, 'like(mary,paul)', '~like(paul,mary)', '~hate(paul,mary)']) == 'sat'
+    assert z3_check([*theory, '~room(visitor)', 'like(visitor,visitor)', '~hate(visitor,visitor)']) == 'sat'
+    assert z3_check([*theory, '~room(visitor)', 'like(visitor,visitor)', 'hate(visitor,visitor)']) == 'unsat'

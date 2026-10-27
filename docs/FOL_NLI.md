@@ -26,9 +26,14 @@ and distinct-name conventions. `background` is included in every exported row.
 Comparisons use subject-first arguments, strict transitive order, opposite
 comparative inverses and monotonic adjective thresholds. Superlatives include
 group membership and strict superiority over other members. Sibling is symmetric
-and irreflexive; like and hate are mutually exclusive for a fixed ordered pair.
-These are the task's explicit modeling conventions, not universal claims about
-natural language or psychology.
+and irreflexive. When like/hate relations occur, their mutual exclusion is
+introduced as an English/formula definition premise with its own stable ID:
+“Definition: For any people A and B, possibly the same person, A cannot both
+like and hate B. Neither relation is required, and for different people these
+relations need not be mutual.” It is
+absent from the hidden background. Proof-preserving shortening retains it when
+needed; otherwise it may be dropped like any other unused premise. This is an
+explicit task assumption, not a universal claim about human psychology.
 
 Dream statements remain excluded: material implication is not an adequate
 semantics for dream content. Ambiguous combinations such as negative existential
@@ -94,8 +99,13 @@ The pipeline implements:
    missing support, counting actual searches rather than cached opposite rows.
 4. Syntactic canonical deduplication with bound-variable normalization and
    commutative operand ordering. This is not semantic-equivalence deduplication.
-5. A global 5,000-example proof-trace cap and exclusion of proof-free nonneutral
-   questions that are decided by background assumptions alone.
+5. A global 5,000-example proof-trace cap, seeded traversal before applying the
+   cap, and explicit exclusion of premise-independent nonneutral questions.
+   Each E/C query must have a Z3 countermodel under the background **without
+   any premise**, including definition premises. UNSAT means independent and
+   unknown means uncertified; both are excluded, with separate counters. A proof
+   that mentions premises is not sufficient because proofs can be nonminimal.
+   Opposite pairs share the dependence check. Final verification repeats it.
 6. Proof-preserving premise shortening and distractor shuffling on paired
    clause records. Stable IDs keep multi-line conditionals intact.
 7. Full-input token-length filtering at 500 tokens; no token truncation.

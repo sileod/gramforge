@@ -13,6 +13,11 @@ PREDICATES = json.loads((Path(__file__).parent / "vocabulary.json").read_text())
 
 COMPARISONS = [('rich', 'richer', 'poor', 'poorer'), ('tall', 'taller', 'short', 'shorter'),
                ('quiet', 'quieter', 'loud', 'louder'), ('old', 'older', 'young', 'younger')]
+# Nonstandard lexical assumptions belong in paired, proof-addressable premises.
+DEFINITIONS = [({'like', 'hate'}, '![X,Y]:~(like(X,Y)&hate(X,Y))',
+                'Definition: For any people A and B, possibly the same person, '
+                'A cannot both like and hate B. Neither relation is required, '
+                'and for different people these relations need not be mutual.')]
 STEMS = {'has': 'have', 'enjoys': 'enjoy', 'owns': 'own', 'plays': 'play', 'collects': 'collect',
          'reads': 'read', 'writes': 'write', 'practices': 'practice', 'uses': 'use', 'speaks': 'speak',
          'bakes': 'bake', 'knows': 'know', 'volunteers': 'volunteer'}
@@ -26,7 +31,8 @@ def has_self_relation(formula):
 def distinct_arguments(children):
     families = {'entity': 'name', 'entity_': 'name', 'outside_entity': 'name',
                 'term': 'statement', 'nterm': 'statement',
-                'property': 'property', 'neg_property': 'property', 'xp': 'property'}
+                'property': 'property', 'neg_property': 'property', 'xp': 'property',
+                'prop': 'proposition', 'adjective': 'adjective'}
     seen = set()
     for child in children:
         family = families.get(child.type)
@@ -229,8 +235,7 @@ def background(names=NAMES):
     """Public, explicit person-domain and strict-comparison conventions."""
     axioms = ['![X]:person(X)', '![X]:anywhere(X)',
               '![X]:(european(X)=>person(X))', '![X]:(tourist(X)=>person(X))',
-              '![X,Y]:(sibling(X,Y)<=>sibling(Y,X))', '![X]:~sibling(X,X)',
-              '![X,Y]:(like(X,Y)=>~hate(X,Y))']
+              '![X,Y]:(sibling(X,Y)<=>sibling(Y,X))', '![X]:~sibling(X,X)']
     for i, a in enumerate(names):
         for b in names[i + 1:]:
             axioms.append(f'{a}!={b}')

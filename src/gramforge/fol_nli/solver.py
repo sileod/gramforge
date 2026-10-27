@@ -4,6 +4,8 @@ import re
 import subprocess
 import tempfile
 
+from .logic import z3_check
+
 
 def problem(background, clauses, hypothesis=None, negate=False):
     lines = [f'fof(b{i},axiom,({formula})).' for i, formula in enumerate(background)]
@@ -12,6 +14,21 @@ def problem(background, clauses, hypothesis=None, negate=False):
         formula = f'~({hypothesis})' if negate else hypothesis
         lines.append(f'fof(query,axiom,({formula})).')
     return '\n'.join(lines) + '\n'
+
+
+def premise_dependence(background, hypothesis, verdict, seconds=2):
+    """Certify that an E/C hypothesis has a countermodel without the premises.
+
+    A proof mentioning premises need not actually require them. Unknown model
+    search results do not certify dependence and are excluded by curation.
+    """
+    assert verdict in ('entailment', 'contradiction')
+    opposite = f'~({hypothesis})' if verdict == 'entailment' else hypothesis
+    formulas = [*background, opposite]
+    status = z3_check(formulas, seconds * 1000)
+    return {'status': {'sat': 'dependent', 'unsat': 'independent'}.get(status, 'unresolved'),
+            'solver': 'z3', 'solver_status': status,
+            'problem_sha256': hashlib.sha256('\n'.join(formulas).encode()).hexdigest()}
 
 
 def check(text, executable, seconds=2, mode="casc_sat"):

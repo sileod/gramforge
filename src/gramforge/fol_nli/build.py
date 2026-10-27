@@ -12,7 +12,7 @@ import zipfile
 
 from .io import save_json
 from .generate import make_group
-from .solver import check, label, problem
+from .solver import check, label, problem, premise_dependence
 
 
 def source_manifest():
@@ -58,6 +58,8 @@ def job(arguments):
                 else:
                     result = label(group['background'], group['clauses'], hypothesis['formula'], executable, seconds)
                     if result['label'] in ('entailment', 'contradiction'):
+                        result['dependency_check'] = premise_dependence(group['background'], hypothesis['formula'], result['label'], seconds)
+                        counts['dependency_' + result['dependency_check']['status']] += 1
                         counts['proof_checks'] += 1
                         counts['proof_source_' + (result['proof_source'] or 'unavailable')] += 1
                         counts['proof_supplement_attempts'] += result['proof_check'] is not None

@@ -7,7 +7,7 @@ from pathlib import Path
 import re
 
 from gramforge import generate
-from .grammar import make_grammar, background, has_self_relation
+from .grammar import make_grammar, background, has_self_relation, DEFINITIONS
 from .logic import parse, symbols
 
 
@@ -107,13 +107,19 @@ def make_group(seed, index, hypotheses=12):
             if name in arities and arities[name] != arity:
                 raise ValueError(f'Conflicting arity: {name}')
             arities[name] = arity
+    for triggers, formula, english in DEFINITIONS:
+        if triggers & arities.keys():
+            clauses.append({'id': f'p{len(clauses)}', 'formula': formula, 'english': english,
+                            'derivation': None, 'role': 'definition'})
+            arities.update(symbols(parse(formula)))
+    premise_formulas = {parse(c['formula']) for c in clauses}
     candidates = {}
     # Reuse full embedded statements (not formula fragments) to ask questions
     # about the generated conditionals, as well as new same-vocabulary queries.
     nodes = [n for n in production.descendants if n.type == 'term']
     for node in nodes:
         formula, english = node @ 'tptp', node @ 'eng'
-        if any(c['formula'] == formula for c in clauses):
+        if parse(formula) in premise_formulas:
             continue
         candidates[formula] = {'formula': formula, 'english': english, 'derivation': trace(node)}
     # Notebook-style concept matching: ask about properties actually occurring
@@ -127,7 +133,7 @@ def make_group(seed, index, hypotheses=12):
         for name in names:
             formula = template.replace('?', name)
             parse(formula)
-            if any(c['formula'] == formula for c in clauses):
+            if parse(formula) in premise_formulas:
                 continue
             candidates[formula] = {'formula': formula, 'english': f'{name_lexicon[name]} {node @ "eng"}',
                                    'derivation': {'instantiated_property': trace(node), 'name': name}}
@@ -143,7 +149,7 @@ def make_group(seed, index, hypotheses=12):
         formula = node @ 'tptp'
         if not symbols(parse(formula)).keys() <= arities.keys():
             continue
-        if any(c['formula'] == formula for c in clauses):
+        if parse(formula) in premise_formulas:
             continue
         candidates[formula] = {'formula': formula, 'english': node @ 'eng', 'derivation': trace(node)}
     choices = sorted(formula for formula in candidates if not has_self_relation(formula))

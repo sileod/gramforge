@@ -20,6 +20,7 @@ from transformers import AutoTokenizer
 from .generate import digest
 from .io import save_json, context_text
 from .logic import parse
+from .solver import premise_dependence
 
 LABELS = ['entailment', 'neutral', 'contradiction']
 
@@ -53,7 +54,9 @@ def candidates(pool, max_premises, trace_cap, seed):
     seen, traces, rejected = set(), Counter(), Counter()
     rows = []
     final_seen = set()
-    for path in sorted((Path(pool) / 'groups').glob('*.json.gz')):
+    paths = sorted((Path(pool) / 'groups').glob('*.json.gz'))
+    random.Random(seed).shuffle(paths)
+    for path in paths:
         with gzip.open(path, 'rt') as file:
             group = json.load(file)
         if 'error' in group:
@@ -63,10 +66,15 @@ def candidates(pool, max_premises, trace_cap, seed):
             label = outcome['label']
             if label not in LABELS:
                 rejected[label] += 1; continue
+            h = outcome['hypothesis']
+            dependency = None
+            if label != 'neutral':
+                dependency = outcome.get('dependency_check') or premise_dependence(group['background'], h['formula'], label)
+                if dependency['status'] != 'dependent':
+                    rejected['premise_' + dependency['status']] += 1; continue
             support = set(outcome['proof_inputs'])
             if label != 'neutral' and (not support or not outcome['proof_trace']):
                 rejected['no_nontrivial_proof'] += 1; continue
-            h = outcome['hypothesis']
             pair = digest([canonical_group, normalized(parse(h['formula']))])
             if pair in seen:
                 rejected['duplicate'] += 1; continue
@@ -101,6 +109,7 @@ def candidates(pool, max_premises, trace_cap, seed):
                    'proof_trace': outcome['proof_trace'], 'proof_trace_id': trace_id,
                    'proof': outcome.get('proof', outcome['proof_check']['output'] if outcome['proof_check'] else ''),
                    'proof_source': outcome.get('proof_source', 'legacy'),
+                   'dependency_check': dependency,
                    'rule_concentration': group['rule_concentration'],
                    'source_group': path.name, 'source_group_sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'source_index': group['index'],
                    'lexicon': group['lexicon'], 'name_lexicon': group['name_lexicon'], 'proposition_lexicon': group['proposition_lexicon']}

@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 
 from .io import save_json, context_text
 from .logic import parse, z3_check
-from .solver import label
+from .solver import label, premise_dependence
 
 
 @lru_cache(maxsize=128)
@@ -37,6 +37,9 @@ def check_row(arguments):
     for formula in row['background'] + [c['formula'] for c in row['clauses']] + [row['hypothesis_tptp']]:
         parse(formula)
     verdict = label(row['background'], row['clauses'], row['hypothesis_tptp'], executable, seconds)
+    if row['label'] in ('entailment', 'contradiction'):
+        dependency = premise_dependence(row['background'], row['hypothesis_tptp'], row['label'], seconds)
+        assert dependency['status'] == 'dependent', ('No certified premise dependence', row['id'], dependency)
     result = {'id': row['id'], 'label': row['label'], 'fresh_vampire': verdict['label'],
               'matches': verdict['label'] == row['label']}
     if independent:
