@@ -28,6 +28,29 @@ def clause(node, index):
     return {'id': f'p{index}', 'formula': formula, 'english': english, 'derivation': trace(node)}
 
 
+def prepare_surface(clauses, hypotheses, seed, index):
+    """Group-wide rendering decisions, made before any solver labels exist."""
+    formulas = [c['formula'] for c in clauses if c['id'] != 'p0']
+    formulas += [h['formula'] for h in hypotheses]
+    uses_room = any({'room', 'there_is_a_room'} & symbols(parse(f)).keys() for f in formulas)
+    # A room absent everywhere else can be interpreted independently. Keep
+    # name/domain conventions: dropping names could change cardinality.
+    retained = [c for c in clauses if c['id'] != 'p0' or uses_room]
+    style = random.Random(f'surface:{seed}:{index}').choice(['room', 'occupants'])
+    replacements = [('everyone in the room', 'every room occupant'),
+                    ('someone in the room', 'a room occupant'),
+                    ('no one in the room', 'no room occupant'),
+                    ('people in the room', 'room occupants'),
+                    ('person in the room', 'room occupant')]
+    def render(text):
+        if style == 'occupants':
+            for original, replacement in replacements:
+                text = re.sub(r'\b' + original + r'\b', replacement, text)
+        return text
+    return ([c | {'english': render(c['english'])} for c in retained],
+            [h | {'english': render(h['english'])} for h in hypotheses], style)
+
+
 @lru_cache(maxsize=32)
 def grammar(size):
     rules = make_grammar(size)
@@ -98,7 +121,8 @@ def make_group(seed, index, hypotheses=12):
         setup_english = f'{", ".join(name_lexicon[n] for n in persons)} {verb} the only {noun} in the room.'
     else:
         setup_formula, setup_english = 'there_is_a_room', 'There is a room.'
-    clauses.insert(0, {'id': 'p0', 'formula': setup_formula, 'english': setup_english, 'derivation': None})
+    clauses.insert(0, {'id': 'p0', 'formula': setup_formula, 'english': setup_english,
+                       'derivation': None, 'role': 'setup'})
     mentioned_names = sorted(set(re.findall(r'\b(?:mary|paul|fred|alice|john|susan|lucy)\b', ' '.join(c['formula'] for c in clauses))))
     theory = background(mentioned_names)
     arities = {}
@@ -160,9 +184,11 @@ def make_group(seed, index, hypotheses=12):
         h = candidates[formula]
         selected += [h, {'formula': f'~({formula})', 'english': f'It is not the case that “{h["english"]}”',
                          'derivation': {'negated_query': h['derivation']}}]
+    clauses, selected, surface_style = prepare_surface(clauses, selected, seed, index)
     return {'index': index, 'seed': seed, 'group_id': digest([theory, [c['formula'] for c in clauses]]),
             'clauses': clauses, 'background': theory, 'hypotheses': selected,
             'derivation': trace(production), 'rule_concentration': concentration, 'sampling_profile': profile,
+            'surface_style': surface_style,
             'lexicon': dict(zip(['pred' + chr(ord('a') + i) for i in range(26)], phrases)),
             'name_lexicon': name_lexicon, 'mentioned_names': mentioned_names,
             'proposition_lexicon': dict(zip(['proposition' + chr(ord('a') + i) for i in range(5)], propositions)),

@@ -21,6 +21,8 @@ from .generate import digest
 from .io import save_json, context_text
 from .logic import parse
 from .solver import premise_dependence
+from .surface import stratum
+from .build import archive_sources, source_manifest
 
 LABELS = ['entailment', 'neutral', 'contradiction']
 
@@ -48,6 +50,51 @@ def features(row):
             row['rule_concentration'], len(row['clauses']),
             *[s.count(op) for s in [p, h] for op in ['!', '?', '&', '|', '<=>', '=>', '<=', '<~>', '~', '=']],
             int(row['hypothesis'] in row['premise']), p.count(h)]
+
+
+def select_clauses(clauses, support, budget, seed):
+    # Setup/definition absence must not indicate whether an E/C proof uses it.
+    required = support | {c['id'] for c in clauses if c['id'] == 'p0' or c.get('role') == 'definition'}
+    if len(required) > budget:
+        return None
+    chosen = [c for c in clauses if c['id'] in required]
+    unused = [c for c in clauses if c['id'] not in required]
+    rng = random.Random(seed)
+    rng.shuffle(unused)
+    chosen += unused[:max(0, budget - len(chosen))]
+    rng.shuffle(chosen)
+    chosen.sort(key=lambda c: c['id'] != 'p0')
+    return chosen
+
+
+def match_surface(pools, count):
+    """Equal label counts in each public surface bucket, up to rounding by one."""
+    buckets = {label: defaultdict(list) for label in LABELS}
+    for label, rows in pools.items():
+        for row in rows:
+            buckets[label][stratum(row)].append(row)
+    keys = sorted(set().union(*(set(b) for b in buckets.values())))
+    capacity = {key: min(len(buckets[label][key]) for label in LABELS) for key in keys}
+    available = sum(capacity.values())
+    common, remainder = divmod(count, len(LABELS))
+    if available < common:
+        raise ValueError(f'Insufficient matched surface buckets: {available} < {common} per label; grow candidate pool')
+    quotas = {key: common * capacity[key] // available for key in keys} if common else dict.fromkeys(keys, 0)
+    # Largest remainders allocate an exact total without changing label quotas.
+    order = sorted(keys, key=lambda key: (-(common * capacity[key] % available), key)) if available else keys
+    for key in order[:common - sum(quotas.values())]:
+        quotas[key] += 1
+    chosen = []
+    for index, label in enumerate(LABELS):
+        selected = [row for key in keys for row in buckets[label][key][:quotas[key]]]
+        if index < remainder:
+            used = {r['id'] for r in selected}
+            extra = next((row for row in pools[label] if row['id'] not in used), None)
+            if extra is None:
+                raise ValueError(f'Insufficient {label} for rounding remainder; grow candidate pool')
+            selected.append(extra)
+        chosen.extend(selected)
+    return chosen
 
 
 def candidates(pool, max_premises, trace_cap, seed):
@@ -84,13 +131,9 @@ def candidates(pool, max_premises, trace_cap, seed):
                 rejected['proof_trace_cap'] += 1; continue
             clauses = group['clauses']
             assert support <= {c['id'] for c in clauses}
-            rng = random.Random(f'{seed}:{pair}')
-            used = [c for c in clauses if c['id'] in support]
-            unused = [c for c in clauses if c['id'] not in support]
-            rng.shuffle(unused)
-            selected = used + unused[:max(0, max_premises - len(used))]
-            rng.shuffle(selected)
-            selected.sort(key=lambda c: c['id'] != 'p0')
+            selected = select_clauses(clauses, support, max_premises, f'{seed}:{pair}')
+            if selected is None:
+                rejected['required_premises_exceed_budget'] += 1; continue
             assert support <= {c['id'] for c in selected}
             premise = '\n'.join(c['english'] for c in selected)
             # Person-domain and name conventions are part of the visible task.
@@ -110,6 +153,7 @@ def candidates(pool, max_premises, trace_cap, seed):
                    'proof': outcome.get('proof', outcome['proof_check']['output'] if outcome['proof_check'] else ''),
                    'proof_source': outcome.get('proof_source', 'legacy'),
                    'dependency_check': dependency,
+                   'premise_unit_budget': min(len(clauses), max_premises),
                    'rule_concentration': group['rule_concentration'],
                    'source_group': path.name, 'source_group_sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'source_index': group['index'],
                    'lexicon': group['lexicon'], 'name_lexicon': group['name_lexicon'], 'proposition_lexicon': group['proposition_lexicon']}
@@ -163,8 +207,9 @@ def curate(rows, size, seed, reference_bin=5, heuristic_size=1000):
     counts['test'] = size - sum(counts.values())
     selected = {}
     caps = {}
+    surface_counts = {}
     for split, count in counts.items():
-        chosen = []
+        pools = {}
         for i, label in enumerate(LABELS):
             target = count // 3 + int(i < count % 3)
             pool = sorted(buckets[split, label], key=lambda r: (-r['difficulty'], r['id']))
@@ -182,11 +227,15 @@ def curate(rows, size, seed, reference_bin=5, heuristic_size=1000):
                 caps[f'{split}/{label}'] = cap
             if len(pool) < target:
                 raise ValueError(f'Insufficient curated {split}/{label}: {len(pool)} < {target}; grow candidate pool')
-            chosen.extend(pool[:target])
+            pools[label] = pool
+        chosen = match_surface(pools, count)
+        surface_counts[split] = {str(key): dict(Counter(r['label'] for r in chosen if stratum(r) == key))
+                                 for key in sorted({stratum(r) for r in chosen})}
         rng.shuffle(chosen)
         selected[split] = chosen
     return selected, {'reserved_heuristic_rows': len(reserved), 'reserved_groups': sorted(groups),
-                      'support_bin_reference': reference_bin, 'support_caps': caps}
+                      'support_bin_reference': reference_bin, 'support_caps': caps,
+                      'surface_stratum_counts': surface_counts}
 
 
 def main():
@@ -225,10 +274,13 @@ def main():
                 rejected['token_length'] += 1
     splits, selection = curate(filtered, args.size, args.seed, args.reference_bin, args.heuristic_size)
     root.mkdir(parents=True)
+    sources = source_manifest()
+    archive_sources(root, sources)
     for split, selected in splits.items():
         pq.write_table(pa.Table.from_pylist(selected), root / f'{split}.parquet', compression='zstd')
     save_json(root / 'manifest.json', vars(args) | selection | {'rejected': dict(rejected),
               'curation_source_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+              'curation_sources': sources,
               'pool_specification_sha256': hashlib.sha256((Path(args.input) / 'specification.json').read_bytes()).hexdigest(),
               'counts': {split: dict(Counter(r['label'] for r in selected)) for split, selected in splits.items()},
               'status': 'Requires fresh export verification; manifest alone is not a correctness certificate'})

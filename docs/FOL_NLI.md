@@ -31,8 +31,9 @@ introduced as an English/formula definition premise with its own stable ID:
 “Definition: For any people A and B, possibly the same person, A cannot both
 like and hate B. Neither relation is required, and for different people these
 relations need not be mutual.” It is
-absent from the hidden background. Proof-preserving shortening retains it when
-needed; otherwise it may be dropped like any other unused premise. This is an
+absent from the hidden background. It remains in every shortened example from
+the same premise group, whether or not a proof uses it. This avoids a cue from
+its presence or absence. This is an
 explicit task assumption, not a universal claim about human psychology.
 
 Dream statements remain excluded: material implication is not an adequate
@@ -107,12 +108,20 @@ The pipeline implements:
    that mentions premises is not sufficient because proofs can be nonminimal.
    Opposite pairs share the dependence check. Final verification repeats it.
 6. Proof-preserving premise shortening and distractor shuffling on paired
-   clause records. Stable IDs keep multi-line conditionals intact.
+   clause records. Setup and definitions are mandatory across all questions in
+   a group, and distractors fill the same group-level clause budget for every
+   label. A proof exceeding that budget is excluded, not given a longer input.
+   Stable IDs keep multi-line conditionals intact.
 7. Full-input token-length filtering at 500 tokens; no token truncation.
 8. A 100-tree gradient-boosting difficulty heuristic trained on 1,000 stratified
    reserved examples. Their complete premise groups are excluded from final splits.
 9. Used-premise balancing capped by the five-input reference bin, final label
-   balancing and 80/10/10 splits grouped by the original full premise.
+   balancing and 80/10/10 splits grouped by the original full premise. Within
+   each split, labels share counts in joint public-text buckets: definition,
+   room and occupant presence/absence, generic negation wrapper, premise length
+   above/below 120 words and hypothesis length above/below 12 words. Integer
+   rounding differs by at most one row per bucket. Missing matched capacity
+   fails curation rather than relaxing quotas; final verification checks counts.
 10. Fresh verification of the final exported text/formula pairs and labels,
     with independent open-domain Z3 checks of a fixed sample.
 
@@ -127,12 +136,31 @@ object ID or reseeds NumPy from system entropy. Per-group compressed checkpoints
 make generation resumable. The specification pins source and solver hashes and
 dependency versions; changed sources require a fresh output directory. Each pool
 archives its exact Python sources and vocabulary in `source.zip`.
+The export separately archives its complete curation sources and hashes, so a
+new curation revision over a frozen candidate pool remains reproducible.
 
 Grammar factories and generation-height bounds are reused per worker. Explicit
 backtracking checkpoints avoid rejecting most long blocks after one failed
 choice. Opposite hypotheses reuse exactly swapped satisfiability results,
 halving their duplicate solver work; they do not approximate the domain.
 Generation/labeling uses CPU processes and leaves GPU training separate.
+
+Scene simplification and wording choices happen before labeling, once per
+premise group. A room setup is omitted only if neither any substantive premise
+nor any selected hypothesis mentions room membership. The original distinct-name
+conventions remain visible, preserving cardinality. Otherwise its scope remains
+explicit. A seeded group-level choice uses either “in the room” wording or
+equivalent “room occupant” phrasing, consistently in premises and hypotheses.
+Such label-blind choices can still correlate with labels; they are not a proof
+that surface shortcuts have been eliminated.
+
+Run `python -m gramforge.fol_nli.surface --dataset OUTPUT --output surface.json`
+on the actual exported dataset to measure premise-only, hypothesis-only and
+formatting-only logistic probes with three held-out premise-group folds. Use
+`--pool POOL` instead for raw generation diagnostics. Reports include balanced
+accuracy (chance 1/3), per-label presence/absence and length statistics, and fold
+scores. These probes use public input text, not proofs or generation metadata;
+above-chance scores need investigation and do not alone establish a causal leak.
 
 The profile rejects identical connective operands and repeated named entities
 within a statement. Ground self-relations are also excluded from premise and

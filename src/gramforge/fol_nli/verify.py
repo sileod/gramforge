@@ -13,6 +13,17 @@ import pyarrow.parquet as pq
 from .io import save_json, context_text
 from .logic import parse, z3_check
 from .solver import label, premise_dependence
+from .surface import stratum
+from .build import source_manifest
+
+
+def record_value(value):
+    # Parquet unions optional struct fields, materializing absent keys as null.
+    if isinstance(value, dict):
+        return {k: record_value(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [record_value(v) for v in value]
+    return value
 
 
 @lru_cache(maxsize=128)
@@ -26,7 +37,10 @@ def check_row(arguments):
     checksum, original = source_group(str(Path(pool) / "groups" / row["source_group"]))
     assert checksum == row["source_group_sha256"]
     original_clauses = {c["id"]: c for c in original["clauses"]}
-    assert all(c == original_clauses[c["id"]] for c in row["clauses"])
+    assert all(record_value(c) == record_value(original_clauses[c['id']]) for c in row['clauses'])
+    mandatory = {c['id'] for c in original['clauses'] if c['id'] == 'p0' or c.get('role') == 'definition'}
+    assert mandatory <= {c['id'] for c in row['clauses']}, 'Setup/definition omitted during shortening'
+    assert len(row['clauses']) == row['premise_unit_budget'], 'Label-dependent clause budget'
     assert row["background"] == original["background"]
     assert any(o["hypothesis"]["formula"] == row["hypothesis_tptp"] and o["hypothesis"]["english"] == row["hypothesis"] and o["label"] == row["label"] for o in original["outcomes"])
     assert row["context"] == context_text(original["name_lexicon"], original["mentioned_names"])
@@ -65,7 +79,12 @@ def main():
     root = Path(args.build)
     seen, groups, retained, rows = set(), {}, {}, []
     for split in ['train', 'validation', 'test']:
-        for row in pq.read_table(root / f'{split}.parquet').to_pylist():
+        split_rows = pq.read_table(root / f'{split}.parquet').to_pylist()
+        for key in {stratum(r) for r in split_rows}:
+            counts = Counter(r['label'] for r in split_rows if stratum(r) == key)
+            assert max(counts.get(label, 0) for label in ['entailment','neutral','contradiction']) - min(
+                counts.get(label, 0) for label in ['entailment','neutral','contradiction']) <= 1, ('Surface imbalance', split, key, counts)
+        for row in split_rows:
             assert row['id'] not in seen, 'Duplicate canonical pair'
             seen.add(row['id'])
             previous = groups.setdefault(row['group_id'], split)
@@ -90,7 +109,8 @@ def main():
                     failures.append(result)
     save_json(root / 'verification.json', {'rows': len(rows), 'vampire': dict(counts),
               'independent_z3': dict(independent), 'failures': failures,
-              'passed': not failures, 'independent_unresolved_are_not_passes': True})
+              'passed': not failures, 'independent_unresolved_are_not_passes': True,
+              'verification_sources': source_manifest()})
     if failures:
         raise RuntimeError(f'{len(failures)} exported rows unresolved or disagree')
 

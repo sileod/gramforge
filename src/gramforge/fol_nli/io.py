@@ -11,9 +11,9 @@ def save_json(path, value):
 
 
 def context_text(name_lexicon, symbols):
-    text = ('All individuals in this task are people. At least one person exists; '
-            'unnamed people may also exist. Definitions quantify over all people, '
-            'inside and outside the room.')
+    text = ('All individuals are people; at least one exists. '
+            'Unnamed people may exist. Definitions range over all people '
+            'unless explicitly restricted.')
     names = [name_lexicon[n] for n in symbols]
     if len(names) == 1:
         text += f' {names[0]} is a person.'
