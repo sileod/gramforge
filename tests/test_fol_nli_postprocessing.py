@@ -153,8 +153,8 @@ def test_paired_clause_verification_accepts_arrow_nulls_but_rejects_text_changes
 def test_independent_retry_preserves_known_results_and_never_guesses(monkeypatch, initial, retry, expected):
     from gramforge.fol_nli import verify
     answers=iter([*initial,retry]);calls=[]
-    def check(formulas,timeout):
-        calls.append((formulas,timeout))
+    def check(formulas,timeout,**kwargs):
+        calls.append((formulas,timeout,kwargs))
         return next(answers)
     monkeypatch.setattr(verify,'z3_check',check)
     label,attempts=verify.independent_check(['p=>q'],'q',10,60)
@@ -162,6 +162,7 @@ def test_independent_retry_preserves_known_results_and_never_guesses(monkeypatch
     assert [c[1] for c in calls]==[10000,10000,60000]
     missing=initial.index('unknown')
     assert calls[2][0]==calls[missing][0]
+    assert calls[2][2]=={'random_seed':42,'ematching':False}
 
 
 def test_independent_unknown_without_retry_is_unresolved(monkeypatch):
@@ -170,3 +171,18 @@ def test_independent_unknown_without_retry_is_unresolved(monkeypatch):
     monkeypatch.setattr(verify,'z3_check',lambda *args:next(answers))
     label,attempts=verify.independent_check([], 'p',10)
     assert label=='unresolved' and len(attempts)==1
+
+
+def test_audit_projection_keeps_required_pairs_and_rejects_mutations(tmp_path):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from gramforge.fol_nli.verify import read_audit_rows,clause_matches
+    original={'id':'p1','formula':'p','english':'The light is on.',
+              'derivation':{'rule':1,'state':{'room':'room'},'children':[]},'role':'setup'}
+    path=tmp_path/'rows.parquet'
+    pq.write_table(pa.Table.from_pylist([{'id':'r','label':'entailment','clauses':[original]}]),path)
+    clause=read_audit_rows(path)[0]['clauses'][0]
+    assert 'derivation' not in clause and clause_matches(clause,original)
+    assert not clause_matches({'id':'p1'},original)
+    assert not clause_matches(clause | {'formula':'~p'},original)
+    assert not clause_matches(clause | {'english':'The light is off.'},original)

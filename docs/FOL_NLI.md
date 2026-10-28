@@ -74,6 +74,17 @@ supplementary proof-support search used during generation. Independent Z3
 unknowns remain unresolved. `verify --independent-retry-seconds 60` optionally
 retries only their unresolved polarities with a larger budget and records both
 attempts; no label changes or row removal are implied by that retry.
+The retry uses model-based quantifier instantiation without E-matching, which
+avoids expensive instantiation loops in counting examples. Both searches still
+use the same open-domain formulas. Each check has its own Z3 context; audit
+workers start fresh rather than inheriting library threads.
+
+Audits project the paired clause IDs, English, formulas and roles from Parquet.
+Full derivations remain in the cryptographically pinned source groups; loading
+their duplicate copies for every hypothesis is unnecessary. Formula/text
+alignment, required context, split isolation and fresh labels are still checked.
+On NFS-backed clusters, use `TMPDIR=/tmp PYTHONDONTWRITEBYTECODE=1` to keep prover
+scratch files and concurrent bytecode-cache writes off shared storage.
 
 The pool size is a candidate budget, not a promise of 100k usable examples.
 If proof-support bins or split/label cells are too small, curation fails with

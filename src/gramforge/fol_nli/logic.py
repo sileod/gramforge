@@ -96,8 +96,9 @@ def symbols(tree, bound=frozenset(), result=None):
 
 
 class Theory:
-    def __init__(self):
-        self.domain = z3.DeclareSort('Person')
+    def __init__(self, context=None):
+        self.context = context
+        self.domain = z3.DeclareSort('Person', ctx=context)
         self.predicates = {}
         self.constants = {}
 
@@ -115,7 +116,7 @@ class Theory:
             _, name, terms = node
             key = name, len(terms)
             if key not in self.predicates:
-                self.predicates[key] = z3.Function(name, *([self.domain] * len(terms)), z3.BoolSort()) if terms else z3.Bool(name)
+                self.predicates[key] = z3.Function(name, *([self.domain] * len(terms)), z3.BoolSort(self.context)) if terms else z3.Bool(name, ctx=self.context)
             predicate = self.predicates[key]
             return predicate(*[self.term(t, bound) for t in terms]) if terms else predicate
         if op in ('=', '!='):
@@ -133,10 +134,12 @@ class Theory:
                 '<=>': lambda: a == b, '<~>': lambda: z3.Xor(a, b)}[op]()
 
 
-def z3_check(formulas, timeout_ms=3000):
-    theory = Theory()
-    solver = z3.Solver()
-    solver.set(timeout=timeout_ms)
+def z3_check(formulas, timeout_ms=3000, random_seed=0, ematching=True):
+    # Keep symbols, solver heuristics and timeout state local to this check.
+    context = z3.Context()
+    theory = Theory(context)
+    solver = z3.Solver(ctx=context)
+    solver.set(timeout=timeout_ms, random_seed=random_seed, ematching=ematching, mbqi=True)
     arities = {}
     for formula in formulas:
         tree = parse(formula)

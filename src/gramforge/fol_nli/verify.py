@@ -1,11 +1,12 @@
 """Verify final exported examples, split isolation and paired clause alignment."""
 import argparse
-from collections import Counter
+from collections import Counter, defaultdict
 from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import gzip
 from functools import lru_cache
 import json
+from multiprocessing import get_context
 from pathlib import Path
 
 import pyarrow.parquet as pq
@@ -26,6 +27,22 @@ def record_value(value):
     return value
 
 
+def clause_matches(exported, original):
+    fields = record_value(exported)
+    return {'id','formula','english'} <= fields.keys() and all(
+        key in original and value == record_value(original[key]) for key,value in fields.items())
+
+
+def read_audit_rows(path):
+    # The pinned source group already contains the authoritative derivation.
+    # Avoid decoding/transferring a duplicate tree for every hypothesis.
+    columns = ['id','label','group_id','retained_group_id','source_group','source_group_sha256',
+               'background','hypothesis_tptp','hypothesis','context','premise','premise_tptp',
+               'proof_inputs','premise_unit_budget']
+    columns += ['clauses.list.element.' + field for field in ['id','formula','english','role']]
+    return pq.ParquetFile(path).read(columns=columns).to_pylist()
+
+
 @lru_cache(maxsize=128)
 def source_group(path):
     content = Path(path).read_bytes()
@@ -35,11 +52,12 @@ def source_group(path):
 def independent_check(base, hypothesis, seconds, retry_seconds=0):
     formulas = [base + [hypothesis], base + [f'~({hypothesis})']]
     statuses = [z3_check(f,seconds * 1000) for f in formulas]
-    attempts = [{'seconds':seconds,'positive':statuses[0],'negative':statuses[1]}]
+    attempts = [{'seconds':seconds,'random_seed':0,'positive':statuses[0],'negative':statuses[1]}]
     if 'unknown' in statuses and retry_seconds > seconds:
-        statuses = [z3_check(f,retry_seconds * 1000) if status == 'unknown' else status
+        statuses = [z3_check(f,retry_seconds * 1000,random_seed=42,ematching=False) if status == 'unknown' else status
                     for f,status in zip(formulas,statuses)]
-        attempts.append({'seconds':retry_seconds,'positive':statuses[0],'negative':statuses[1]})
+        attempts.append({'seconds':retry_seconds,'random_seed':42,'ematching':False,
+                         'positive':statuses[0],'negative':statuses[1]})
     inferred = {('sat','unsat'):'entailment', ('unsat','sat'):'contradiction',
                 ('sat','sat'):'neutral'}.get(tuple(statuses),'unresolved')
     return inferred, attempts
@@ -50,7 +68,7 @@ def check_row(arguments):
     checksum, original = source_group(str(Path(pool) / "groups" / row["source_group"]))
     assert checksum == row["source_group_sha256"]
     original_clauses = {c["id"]: c for c in original["clauses"]}
-    assert all(record_value(c) == record_value(original_clauses[c['id']]) for c in row['clauses'])
+    assert all(clause_matches(c,original_clauses[c['id']]) for c in row['clauses'])
     mandatory = {c['id'] for c in original['clauses'] if c['id'] == 'p0' or c.get('role') == 'definition'}
     assert mandatory <= {c['id'] for c in row['clauses']}, 'Setup/definition omitted during shortening'
     assert len(row['clauses']) == row['premise_unit_budget'], 'Label-dependent clause budget'
@@ -94,9 +112,11 @@ def main():
     root = Path(args.build)
     seen, groups, retained, rows = set(), {}, {}, []
     for split in ['train', 'validation', 'test']:
-        split_rows = pq.read_table(root / f'{split}.parquet').to_pylist()
-        for key in {stratum(r) for r in split_rows}:
-            counts = Counter(r['label'] for r in split_rows if stratum(r) == key)
+        split_rows = read_audit_rows(root / f'{split}.parquet')
+        buckets = defaultdict(Counter)
+        for row in split_rows:
+            buckets[stratum(row)][row['label']] += 1
+        for key,counts in buckets.items():
             assert max(counts.get(label, 0) for label in ['entailment','neutral','contradiction']) - min(
                 counts.get(label, 0) for label in ['entailment','neutral','contradiction']) <= 1, ('Surface imbalance', split, key, counts)
         for row in split_rows:
@@ -113,7 +133,8 @@ def main():
     counts = Counter()
     independent = Counter()
     failures = []
-    with ProcessPoolExecutor(args.workers) as pool:
+    # Arrow/solver imports may already have threads; do not inherit their locks.
+    with ProcessPoolExecutor(args.workers, mp_context=get_context('spawn')) as pool:
         with (root / 'verification.jsonl').open('w') as file:
             for result in pool.map(check_row, jobs, chunksize=8):
                 file.write(json.dumps(result) + '\n')
