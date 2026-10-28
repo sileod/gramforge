@@ -69,6 +69,12 @@ Cache the tokenizer at its pinned revision before curation. The default is
 `3209a6ab012eab725e8f24547972f9aa133d1345`; it is used only to count tokens.
 No model inference or LLM labeling is used to construct labels.
 
+Final verification checks both Vampire polarities without repeating the
+supplementary proof-support search used during generation. Independent Z3
+unknowns remain unresolved. `verify --independent-retry-seconds 60` optionally
+retries only their unresolved polarities with a larger budget and records both
+attempts; no label changes or row removal are implied by that retry.
+
 The pool size is a candidate budget, not a promise of 100k usable examples.
 If proof-support bins or split/label cells are too small, curation fails with
 counts. Extend the pool by rerunning the same build with a larger `--groups` budget;

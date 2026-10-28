@@ -42,3 +42,21 @@ def test_missing_support_gets_larger_supplement_without_changing_label(monkeypat
     assert result['proof'] == (PROOF if success else portfolio)
     assert result['proof_support_missing'] is not success
     assert result['proof_source'] == ('supplement' if success else 'portfolio')
+
+
+@pytest.mark.parametrize('statuses,verdict', [
+    (['Satisfiable','Unsatisfiable'],'entailment'),
+    (['Unsatisfiable','Satisfiable'],'contradiction'),
+    (['Satisfiable','Satisfiable'],'neutral'),
+    (['Satisfiable','Timeout'],'unresolved'),
+])
+def test_export_verification_needs_both_polarities_but_no_proof_supplement(monkeypatch, statuses, verdict):
+    calls = []
+    def check(*args, **kwargs):
+        calls.append(args)
+        return {'status':statuses[len(calls)-1],'output':'portfolio without named proof inputs'}
+    monkeypatch.setattr(solver,'check',check)
+    result=solver.label([], [{'id':'p1','formula':'p'}], 'p', 'vampire', recover_proof=False)
+    assert len(calls)==2
+    assert result['label']==verdict
+    assert result['proof_check'] is None

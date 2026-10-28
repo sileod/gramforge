@@ -142,3 +142,31 @@ def test_paired_clause_verification_accepts_arrow_nulls_but_rejects_text_changes
     assert record_value(decoded) == record_value(clauses)
     decoded[1]['english'] = 'not q'
     assert record_value(decoded) != record_value(clauses)
+
+
+@pytest.mark.parametrize('initial,retry,expected', [
+    (['sat','unknown'],'unsat','entailment'),
+    (['unknown','sat'],'unsat','contradiction'),
+    (['sat','unknown'],'sat','neutral'),
+    (['sat','unknown'],'unknown','unresolved'),
+])
+def test_independent_retry_preserves_known_results_and_never_guesses(monkeypatch, initial, retry, expected):
+    from gramforge.fol_nli import verify
+    answers=iter([*initial,retry]);calls=[]
+    def check(formulas,timeout):
+        calls.append((formulas,timeout))
+        return next(answers)
+    monkeypatch.setattr(verify,'z3_check',check)
+    label,attempts=verify.independent_check(['p=>q'],'q',10,60)
+    assert label==expected and len(attempts)==2
+    assert [c[1] for c in calls]==[10000,10000,60000]
+    missing=initial.index('unknown')
+    assert calls[2][0]==calls[missing][0]
+
+
+def test_independent_unknown_without_retry_is_unresolved(monkeypatch):
+    from gramforge.fol_nli import verify
+    answers=iter(['sat','unknown'])
+    monkeypatch.setattr(verify,'z3_check',lambda *args:next(answers))
+    label,attempts=verify.independent_check([], 'p',10)
+    assert label=='unresolved' and len(attempts)==1

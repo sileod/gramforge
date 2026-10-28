@@ -46,7 +46,7 @@ def check(text, executable, seconds=2, mode="casc_sat"):
             'problem_sha256': hashlib.sha256(text.encode()).hexdigest()}
 
 
-def label(background, clauses, hypothesis, executable, seconds=2):
+def label(background, clauses, hypothesis, executable, seconds=2, recover_proof=True):
     positive = check(problem(background, clauses, hypothesis), executable, seconds)
     negative = check(problem(background, clauses, hypothesis, negate=True), executable, seconds)
     statuses = positive['status'], negative['status']
@@ -64,7 +64,7 @@ def label(background, clauses, hypothesis, executable, seconds=2):
     support, trace = extract(proof)
     source = 'portfolio' if proof else None
     proof_check = None
-    if verdict in ('entailment', 'contradiction') and not (support and trace):
+    if recover_proof and verdict in ('entailment', 'contradiction') and not (support and trace):
         proof_check = check(problem(background, clauses, hypothesis, negate=verdict == 'entailment'),
                             executable, max(10, 5 * seconds), mode='vampire')
         if proof_check['status'] == 'Unsatisfiable':
