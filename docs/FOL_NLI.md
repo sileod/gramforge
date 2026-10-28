@@ -243,3 +243,18 @@ subsets on different hardware; exact postprocessing replay uses the frozen pool.
 This is recorded provenance, not a claim of bitwise-identical theorem-prover
 logs across machines. Source symbols, seed/index derivations and resolved
 logical labels remain the reproducible inputs to the audit.
+
+### Explicit single-premise quota
+
+For a larger candidate pool, `curate --max-one-premise-fraction 0.2` limits
+single-cited-input examples to at most 20% of each E/C label in each split.
+The cap is applied before surface matching against the final label quota, so
+surface matching cannot increase it. Neutrals have no refutation support and
+are excluded from this constraint. Missing capacity fails instead of relaxing
+the limit. The option defaults to disabled to preserve historical exports.
+This measures solver-cited input clauses, not minimum necessary premises or
+proof depth; a clause can itself contain several statements.
+
+Proof-trace frequency is controlled independently with `--trace-cap`.
+The historical cap of 5,000 did not bind in the first full candidate pool;
+retaining that setting alone does not establish effective proof diversity.

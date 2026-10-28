@@ -7,6 +7,25 @@ from gramforge.fol_nli.curate import candidates
 from gramforge.fol_nli.solver import premise_dependence
 
 
+def test_single_premise_cap_survives_subselection_and_preserves_rank():
+    from gramforge.fol_nli.curate import limit_single_premise
+    rows = [{'id': i, 'proof_inputs': ['p1'] if i % 2 else ['p1', 'p2']} for i in range(30)]
+    kept = limit_single_premise(rows, 10, .2)
+    assert [r['id'] for r in kept if len(r['proof_inputs']) == 1] == [1, 3]
+    assert [r['id'] for r in kept] == sorted(r['id'] for r in kept)
+    # Any later choice of ten rows, including surface matching, can retain at most two.
+    assert sum(len(r['proof_inputs']) == 1 for r in kept[:10]) <= 2
+    assert limit_single_premise(rows, 10, None) is rows
+    assert all(len(r['proof_inputs']) > 1 for r in limit_single_premise(rows, 10, 0))
+
+
+@pytest.mark.parametrize('fraction', [-.1, 1.1, float('nan')])
+def test_single_premise_cap_rejects_invalid_fraction(fraction):
+    from gramforge.fol_nli.curate import limit_single_premise
+    with pytest.raises(ValueError):
+        limit_single_premise([], 10, fraction)
+
+
 @pytest.mark.parametrize('hypothesis,label,expected', [
     ('p<~>p', 'contradiction', 'independent'),
     ('~(p<~>p)', 'entailment', 'independent'),

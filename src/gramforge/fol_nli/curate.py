@@ -191,7 +191,26 @@ def candidates(pool, max_premises, trace_cap, seed):
     return rows, rejected
 
 
-def curate(rows, size, seed, reference_bin=5, heuristic_size=1000):
+def limit_single_premise(rows, target, fraction):
+    """Bound single-input rows even after later surface-stratum selection."""
+    if fraction is None:
+        return rows
+    if not 0 <= fraction <= 1:
+        raise ValueError('Single-premise fraction must be between zero and one')
+    budget = int(target * fraction)
+    selected = []
+    for row in rows:
+        if len(row['proof_inputs']) == 1:
+            if budget == 0:
+                continue
+            budget -= 1
+        selected.append(row)
+    return selected
+
+
+def curate(rows, size, seed, reference_bin=5, heuristic_size=1000, max_one_premise_fraction=None):
+    if max_one_premise_fraction is not None and not 0 <= max_one_premise_fraction <= 1:
+        raise ValueError('Single-premise fraction must be between zero and one')
     rng = random.Random(seed)
     rng.shuffle(rows)
     reserved = []
@@ -240,6 +259,7 @@ def curate(rows, size, seed, reference_bin=5, heuristic_size=1000):
                         keep.append(row); bins[support_size] += 1
                 pool = keep
                 caps[f'{split}/{label}'] = cap
+                pool = limit_single_premise(pool, target, max_one_premise_fraction)
             if len(pool) < target:
                 raise ValueError(f'Insufficient curated {split}/{label}: {len(pool)} < {target}; grow candidate pool')
             pools[label] = pool
@@ -250,6 +270,7 @@ def curate(rows, size, seed, reference_bin=5, heuristic_size=1000):
         selected[split] = chosen
     return selected, {'reserved_heuristic_rows': len(reserved), 'reserved_groups': sorted(groups),
                       'support_bin_reference': reference_bin, 'support_caps': caps,
+                      'max_one_premise_fraction': max_one_premise_fraction,
                       'surface_stratum_counts': surface_counts}
 
 
@@ -303,6 +324,8 @@ def main():
     p.add_argument('--max-premises', type=int, default=24)
     p.add_argument('--trace-cap', type=int, default=5000)
     p.add_argument('--reference-bin', type=int, default=5)
+    p.add_argument('--max-one-premise-fraction', type=float, default=None,
+                   help='Maximum single-proof-input fraction per E/C label and split; fails if capacity is insufficient')
     p.add_argument('--heuristic-size', type=int, default=1000)
     p.add_argument('--max-tokens', type=int, default=500)
     p.add_argument('--tokenizer', default='sileod/deberta-v3-base-tasksource-nli')
@@ -311,7 +334,8 @@ def main():
     if Path(args.output).exists():
         raise ValueError('Use a fresh output directory')
     rows, rejected = prepare(args)
-    splits, selection = curate(rows, args.size, args.seed, args.reference_bin, args.heuristic_size)
+    splits, selection = curate(rows, args.size, args.seed, args.reference_bin, args.heuristic_size,
+                               args.max_one_premise_fraction)
     export(args, splits, selection, rejected)
 
 
