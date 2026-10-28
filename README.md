@@ -91,3 +91,7 @@ Generating synthetic data requires complexity management. gramforge implements e
     pages = "5275--5283",
 }
 ```
+
+## Reproducible FOL-NLI
+
+The open-domain FOL-NLI generation and notebook-derived curation pipeline is documented in [docs/FOL_NLI.md](docs/FOL_NLI.md).

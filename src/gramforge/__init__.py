@@ -3,13 +3,14 @@ from .generate_choices import generate_with_choices, generate_choices_batch
 from .grammar import Substitution, init_grammar, Constraint
 
 
-import nltk
 import re
 
 def gramforge_to_nltk(g, lang_index=0):
     """
     Converts a gramforge Grammar class to an nltk.CFG object.
     """
+    import nltk
+
     lang = g.langs[lang_index]
     prods = []
 

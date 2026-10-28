@@ -1,0 +1,17 @@
+# Install the local checkout with `pip install -e .` first (Python 3.12 used).
+z3-solver==4.15.8.0
+pyarrow==21.0.0
+numpy==2.4.6
+scipy==1.15.3
+scikit-learn==1.6.1
+joblib==1.5.0
+threadpoolctl==3.6.0
+transformers==5.17.0
+funcy==2.0
+exrex==0.12.0
+easydict==1.13
+anytree==2.13.0
+nltk==3.9.1
+pandas==2.2.3
+tqdm==4.67.3
+psutil==7.0.0

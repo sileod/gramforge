@@ -83,7 +83,7 @@ def FOL_grammar(
         noun = 'person' if len(persons) == 1 else 'people'
         verb = 'is' if len(persons) == 1 else 'are'
         eng_setup=f"{persons_str} {verb} the only {noun} in the {room}.\n{x[0]@eng}"
-        in_room="&".join([f"room({x})" for x in persons])
+        in_room="&".join([f"(room({x})&person({x}))" for x in persons])
         disj="|".join([f"X='{x}'" for x in persons])
 
         if persons:
@@ -223,7 +223,7 @@ def FOL_grammar(
     R('adjective_chain(adjective_chain,adjective)','0&1(?)','0 1',constraint=C('1∉0'))
     R('adjective_chain(adjective)','0(?)','0')
     
-    #R('outside_entity(entity_)','0','0',constraint=lambda x: not inside_person(x))
+    R('outside_entity(entity_)','0','0',constraint=lambda x: not inside_person(x))
     
     R('property(adj_noun)','0', lambda p: f"is {choose_article(p @ eng)} {p @ eng}", weight=2)
     R('property(adj_noun)','~(0)', lambda p: f"is not {choose_article(p @ eng)} {p @ eng}", weight=1)
