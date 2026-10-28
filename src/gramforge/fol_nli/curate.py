@@ -106,8 +106,9 @@ def candidates(pool, max_premises, trace_cap, seed):
     paths = sorted((Path(pool) / 'groups').glob('*.json.gz'))
     random.Random(seed).shuffle(paths)
     for path in paths:
-        with gzip.open(path, 'rt') as file:
-            group = json.load(file)
+        compressed = path.read_bytes()
+        checksum = hashlib.sha256(compressed).hexdigest()
+        group = json.loads(gzip.decompress(compressed))
         if 'error' in group:
             continue
         formulas = {c['id']: normalized(parse(c['formula'])) for c in group['clauses']}
@@ -169,7 +170,7 @@ def candidates(pool, max_premises, trace_cap, seed):
                    'dependency_check': dependency,
                    'premise_unit_budget': min(len(clauses), max_premises),
                    'rule_concentration': group['rule_concentration'],
-                   'source_group': path.name, 'source_group_sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'source_index': group['index'],
+                   'source_group': path.name, 'source_group_sha256': checksum, 'source_index': group['index'],
                    'lexicon': group['lexicon'], 'name_lexicon': group['name_lexicon'], 'proposition_lexicon': group['proposition_lexicon']}
             rows.append(row); traces[trace_id] += 1
     # Connected components prevent leakage through either full or shortened
