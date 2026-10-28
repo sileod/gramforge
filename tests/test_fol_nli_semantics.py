@@ -131,6 +131,17 @@ def test_generation_is_independent_of_previous_groups():
     assert all('pred' + chr(97 + i) in first['lexicon'] for i in range(26))
 
 
+def test_stronger_chains_leave_mixed_derivations_unchanged():
+    from gramforge.fol_nli.generate import make_group, grammar
+    standard = make_group(42, 0, hypotheses=2)
+    assert standard['sampling_profile'] == 'mixed'
+    assert standard == make_group(42, 0, hypotheses=2, strong_chains=True)
+    chain = make_group(42, 4, hypotheses=2, strong_chains=True)
+    assert chain['sampling_profile'] == 'chain-rich'
+    rules, _, _ = grammar(chain['requested_premise_units'])
+    assert all(r.weight > 0 for r in rules._instances)
+
+
 def test_identical_connective_operands_are_excluded(grammar):
     from gramforge.fol_nli.grammar import distinct_arguments
     left, right = prop(grammar), prop(grammar)

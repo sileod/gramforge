@@ -110,16 +110,20 @@ def candidates(pool, max_premises, trace_cap, seed):
             group = json.load(file)
         if 'error' in group:
             continue
-        statements = {digest(normalized(parse(c['formula']))) for c in group['clauses']}
-        canonical_group = digest(sorted([normalized(parse(c['formula'])) for c in group['clauses']], key=str))
+        formulas = {c['id']: normalized(parse(c['formula'])) for c in group['clauses']}
+        statements = {digest(f) for f in formulas.values()}
+        canonical_group = digest(sorted(formulas.values(), key=str))
+        retained_groups = {}
         for outcome in group['outcomes']:
             label = outcome['label']
             if label not in LABELS:
                 rejected[label] += 1; continue
             h = outcome['hypothesis']
+            parsed_h = parse(h['formula'])
+            normalized_h = normalized(parsed_h)
             # Both polarities must be checked: opposite-query generation can
             # reintroduce a statement excluded before the polarity expansion.
-            if any(digest(normalized(parse(f))) in statements for f in [h['formula'], f'~({h["formula"]})']):
+            if digest(normalized_h) in statements or digest(normalized(('~', parsed_h))) in statements:
                 rejected['direct_premise_match'] += 1; continue
             dependency = None
             if label != 'neutral':
@@ -129,7 +133,7 @@ def candidates(pool, max_premises, trace_cap, seed):
             support = set(outcome['proof_inputs'])
             if label != 'neutral' and (not support or not outcome['proof_trace']):
                 rejected['no_nontrivial_proof'] += 1; continue
-            pair = digest([canonical_group, normalized(parse(h['formula']))])
+            pair = digest([canonical_group, normalized_h])
             if pair in seen:
                 rejected['duplicate'] += 1; continue
             seen.add(pair)
@@ -146,8 +150,11 @@ def candidates(pool, max_premises, trace_cap, seed):
             # Person-domain and name conventions are part of the visible task.
             context = context_text(group['name_lexicon'], group['mentioned_names'])
             premise = context + '\n' + premise
-            retained_group = digest([group['background'], sorted([normalized(parse(c['formula'])) for c in selected], key=str)])
-            pair = digest([retained_group, normalized(parse(h['formula']))])
+            identifiers = tuple(sorted(c['id'] for c in selected))
+            if identifiers not in retained_groups:
+                retained_groups[identifiers] = digest([group['background'], sorted([formulas[i] for i in identifiers], key=str)])
+            retained_group = retained_groups[identifiers]
+            pair = digest([retained_group, normalized_h])
             if pair in final_seen:
                 rejected['duplicate_after_shortening'] += 1; continue
             final_seen.add(pair)
@@ -245,23 +252,8 @@ def curate(rows, size, seed, reference_bin=5, heuristic_size=1000):
                       'surface_stratum_counts': surface_counts}
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--input', required=True)
-    p.add_argument('--output', required=True)
-    p.add_argument('--size', type=int, default=100000)
-    p.add_argument('--seed', type=int, default=42)
-    p.add_argument('--max-premises', type=int, default=24)
-    p.add_argument('--trace-cap', type=int, default=5000)
-    p.add_argument('--reference-bin', type=int, default=5)
-    p.add_argument('--heuristic-size', type=int, default=1000)
-    p.add_argument('--max-tokens', type=int, default=500)
-    p.add_argument('--tokenizer', default='sileod/deberta-v3-base-tasksource-nli')
-    p.add_argument('--revision', default='3209a6ab012eab725e8f24547972f9aa133d1345')
-    args = p.parse_args()
-    root = Path(args.output)
-    if root.exists():
-        raise ValueError('Use a fresh output directory')
+def prepare(args):
+    """Read and tokenize one immutable pool for one or more selection runs."""
     complete = Path(args.input) / 'complete.json'
     if not complete.exists():
         raise ValueError('Candidate pool is incomplete')
@@ -279,7 +271,15 @@ def main():
                 row['tokens'] = len(ids); filtered.append(row)
             else:
                 rejected['token_length'] += 1
-    splits, selection = curate(filtered, args.size, args.seed, args.reference_bin, args.heuristic_size)
+    print(json.dumps({'stage':'prepared', 'rows':len(filtered),
+                      'labels':dict(Counter(r['label'] for r in filtered)),
+                      'support_sizes':{label:dict(Counter(len(r['proof_inputs']) for r in filtered if r['label'] == label))
+                                       for label in LABELS}, 'rejected':dict(rejected)}), flush=True)
+    return filtered, rejected
+
+
+def export(args, splits, selection, rejected):
+    root = Path(args.output)
     root.mkdir(parents=True)
     sources = source_manifest()
     archive_sources(root, sources)
@@ -291,6 +291,27 @@ def main():
               'pool_specification_sha256': hashlib.sha256((Path(args.input) / 'specification.json').read_bytes()).hexdigest(),
               'counts': {split: dict(Counter(r['label'] for r in selected)) for split, selected in splits.items()},
               'status': 'Requires fresh export verification; manifest alone is not a correctness certificate'})
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--input', required=True)
+    p.add_argument('--output', required=True)
+    p.add_argument('--size', type=int, default=100000)
+    p.add_argument('--seed', type=int, default=42)
+    p.add_argument('--max-premises', type=int, default=24)
+    p.add_argument('--trace-cap', type=int, default=5000)
+    p.add_argument('--reference-bin', type=int, default=5)
+    p.add_argument('--heuristic-size', type=int, default=1000)
+    p.add_argument('--max-tokens', type=int, default=500)
+    p.add_argument('--tokenizer', default='sileod/deberta-v3-base-tasksource-nli')
+    p.add_argument('--revision', default='3209a6ab012eab725e8f24547972f9aa133d1345')
+    args = p.parse_args()
+    if Path(args.output).exists():
+        raise ValueError('Use a fresh output directory')
+    rows, rejected = prepare(args)
+    splits, selection = curate(rows, args.size, args.seed, args.reference_bin, args.heuristic_size)
+    export(args, splits, selection, rejected)
 
 
 if __name__ == '__main__':

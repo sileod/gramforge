@@ -79,6 +79,14 @@ A small end-to-end plumbing check can explicitly request `--size 30
 --heuristic-size 6 --reference-bin 1`; that is a smoke test, not the paper's
 five-input balancing protocol or a training-quality result.
 
+The reference bin is a selection policy, not a change to logical expressivity.
+An explicitly named available-depth comparison may instead use
+`--reference-bin 1 --heuristic-size 1000 --size 50000`. It retains the same full
+grammar, logical checks, deduplication, difficulty filtering and surface matching,
+but its proof-depth distribution differs from five-input-bin balancing. Report
+that difference and use the same training count in its published-data control.
+Neither policy silently substitutes for the other if capacity is insufficient.
+
 ## Notebook postprocessing recovered
 
 The provenance reference is `unigram v4 postprocess unigram-fol.ipynb`, especially
@@ -196,6 +204,14 @@ The semantic, FOL quality and core grammar/CFG test suites pass 29 tests. A whee
 frozen vocabulary. Historical pilot source snapshots remain separate from the
 current mixed/chain-rich sampling profile, which preserves positive weight for
 all productions and uses a 25% chain-rich stratum to improve multi-step coverage.
+`build --strong-chains` is an experimental stronger weighting of that same
+stratum. It keeps all productions positive and leaves mixed-profile derivations
+unchanged; the build specification records the option. A paired 1,000-group
+development test increased premise-dependent entailments with at least three
+cited inputs from 10 to 46, with five-input cases increasing from 1 to 5, but
+also had 29 incomplete generations versus zero. These small counts do not
+establish production yield or downstream improvement. The audited default
+sampling remains unchanged.
 
 Distributed CPU generation uses deterministic index sharding: give workers the
 same pool, `--groups`, seed and sources, and distinct `--shard` values with a

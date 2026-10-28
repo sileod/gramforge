@@ -65,7 +65,7 @@ def grammar(size):
     return rules, query, [r.weight for r in rules._instances]
 
 
-def make_group(seed, index, hypotheses=12):
+def make_group(seed, index, hypotheses=12, strong_chains=False):
     rng = random.Random(f'gramforge-fol-nli:{seed}:{index}')
     size = rng.randint(1, 32)
     rules, query, weights = grammar(size)
@@ -94,13 +94,20 @@ def make_group(seed, index, hypotheses=12):
         # positive weight, and three quarters of groups retain mixed sampling.
         for rule, base_weight in zip(rules._instances, weights):
             if rule.signature == 'term(X_quantifier,X_property)':
-                rule.weight *= 4
+                rule.weight *= 12 if strong_chains else 4
             elif rule.signature == 'term(entity,property)':
-                rule.weight *= 3
-            elif rule.signature == 'property(state)':
-                rule.weight *= 2 if base_weight == 12 else 4
-            elif rule.name == 'group' and rule.templates['tptp'] == 'anywhere':
+                rule.weight *= 6 if strong_chains else 3
+            elif strong_chains and rule.signature == 'X_property(cproperty)':
+                rule.weight *= 12
+            elif (strong_chains and rule.name == 'cproperty' and
+                  rule.templates['tptp'] in ('(({0})=>({1}))', '(({1})<=({0}))', '(({0})<=>({1}))')):
+                rule.weight *= 6
+            elif strong_chains and rule.name == 'quantifier' and rule.templates['tptp'] == '!':
                 rule.weight *= 30
+            elif rule.signature == 'property(state)':
+                rule.weight *= (12 if base_weight == 12 else 16) if strong_chains else (2 if base_weight == 12 else 4)
+            elif rule.name == 'group' and rule.templates['tptp'] == 'anywhere':
+                rule.weight *= 100 if strong_chains else 30
             elif rule.name == 'block' and any(arg == 'cond' for arg in rule.args):
                 rule.weight *= .1
     production = generate(rules.start(), seed=rng.getrandbits(32), depth=14, n_iter=20, max_steps=10000, k=8, save_prob=.1)

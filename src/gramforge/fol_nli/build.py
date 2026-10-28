@@ -36,13 +36,13 @@ def archive_sources(root, sources):
 
 
 def job(arguments):
-    root, seed, index, hypotheses, executable, seconds = arguments
+    root, seed, index, hypotheses, executable, seconds, strong_chains = arguments
     path = Path(root) / 'groups' / f'{index:08d}.json.gz'
     if path.exists():
         with gzip.open(path, 'rt') as file:
             return json.load(file)['counts']
     try:
-        group = make_group(seed, index, hypotheses)
+        group = make_group(seed, index, hypotheses, strong_chains=strong_chains)
         counts = Counter()
         base = check(problem(group['background'], group['clauses']), executable, seconds)
         group['premise_check'] = base
@@ -91,6 +91,7 @@ def main():
     parser.add_argument('--finalize', action='store_true')
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--hypotheses', type=int, default=12)
+    parser.add_argument('--strong-chains', action='store_true', help='Experimental stronger weights within the 25%% chain-rich stratum')
     parser.add_argument('--workers', type=int, default=12)
     parser.add_argument('--seconds', type=int, default=2)
     parser.add_argument('--vampire', default=str(Path.home() / 'extlibs/solver/vampire'))
@@ -128,7 +129,7 @@ def main():
         return
     counts = Counter()
     started = time.monotonic()
-    jobs = [(str(root), args.seed, i, args.hypotheses, args.vampire, args.seconds) for i in range(args.shard, args.groups, args.shards)]
+    jobs = [(str(root), args.seed, i, args.hypotheses, args.vampire, args.seconds, args.strong_chains) for i in range(args.shard, args.groups, args.shards)]
     with ProcessPoolExecutor(args.workers) as pool:
         pending = [pool.submit(job, item) for item in jobs]
         for done, future in enumerate(as_completed(pending), 1):
